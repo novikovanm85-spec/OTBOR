@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Викторина | Работает на всех вопросах</title>
+    <title>Викторина | Автоматическое начисление очков</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -39,8 +39,6 @@
         .team-color { width: 12px; height: 12px; border-radius: 12px; }
         .team-name { width: 100px; font-weight: bold; color: white; }
         .team-score { flex: 1; font-size: 1.5rem; font-weight: bold; color: white; }
-        .score-buttons { display: flex; gap: 8px; }
-        .score-btn { background: #2a2e45; border: none; color: white; width: 36px; height: 36px; border-radius: 20px; cursor: pointer; font-size: 1.2rem; }
         .progress-bar-container { width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 10px; margin-top: -8px; margin-bottom: 15px; overflow: hidden; }
         .progress-bar { height: 100%; border-radius: 10px; transition: width 0.3s ease; }
         .progress-bar.gold { background: linear-gradient(90deg, #ffd700, #ffb347); }
@@ -132,7 +130,6 @@
     const answersRef = database.ref('/quiz_answers');
     const teamsScoreRef = database.ref('/quiz_scores');
     const gameStateRef = database.ref('/quiz_state');
-    const resetRoundRef = database.ref('/quiz_reset');
     
     function loadQuizzes() {
         const saved = localStorage.getItem('quizzes');
@@ -283,7 +280,6 @@
         resetTimer();
         startTimer();
         
-        // Отправляем вопрос на телефоны
         gameStateRef.set({ 
             question: currentQuestion.text, 
             answers: currentQuestion.answers, 
@@ -291,13 +287,13 @@
             timestamp: Date.now()
         });
         
-        // Сбрасываем состояние ответов
         answersRef.set({ locked: false, winner: null, answer: null, expired: false });
         
         document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
         document.getElementById('statusDisplay').style.background = '#1a1f2e';
     }
     
+    // ========== ОБНОВЛЁННАЯ ТАБЛИЦА ЛИДЕРОВ (БЕЗ КНОПОК +1/-1) ==========
     function updateScoreboard() {
         const sorted = [...TEAMS].sort((a,b)=>b.score-a.score);
         const maxScore = Math.max(10, ...TEAMS.map(t=>t.score));
@@ -305,45 +301,51 @@
         container.innerHTML = sorted.map(team => {
             const percent = Math.min(100, (team.score/maxScore)*100);
             const isGold = team.score>=10;
-            return `<div class="score-row"><div class="team-color" style="background:${team.color}"></div><div class="team-name">${team.name}</div><div class="team-score">${team.score} очков</div><div class="score-buttons"><button class="score-btn" data-team="${team.id}" data-delta="1">+1</button><button class="score-btn" data-team="${team.id}" data-delta="-1">-1</button></div></div><div class="progress-bar-container"><div class="progress-bar${isGold?' gold':''}" style="width:${percent}%; background:${isGold?'#ffd700':team.color};"></div></div>`;
+            return `
+                <div class="score-row">
+                    <div class="team-color" style="background:${team.color}"></div>
+                    <div class="team-name">${team.name}</div>
+                    <div class="team-score">${team.score} очков</div>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar${isGold?' gold':''}" style="width:${percent}%; background:${isGold?'#ffd700':team.color};"></div>
+                </div>
+            `;
         }).join('');
-        document.querySelectorAll('.score-btn').forEach(btn => {
-            btn.onclick = (e) => {
-                e.stopPropagation();
-                const team = TEAMS.find(t=>t.id===btn.dataset.team);
-                if(team) { team.score = Math.max(0, team.score+parseInt(btn.dataset.delta)); updateScoreboard(); const scores={}; TEAMS.forEach(t=>{scores[t.id]=t.score;}); teamsScoreRef.set(scores); }
-            };
-        });
     }
     
-    function resetRound() {
-        waitingForAnswer = true;
-        currentLocked = false;
-        if(timerExpired) { resetTimer(); startTimer(); }
-        document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
-        document.getElementById('statusDisplay').style.background = '#1a1f2e';
-        document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => { btn.classList.remove('correct','wrong'); btn.disabled=false; btn.style.opacity='1'; });
-        answersRef.set({ locked: false, winner: null, answer: null, expired: false });
+    // Сохранение очков в Firebase
+    function saveScoresToFirebase() {
+        const scores = {};
+        TEAMS.forEach(team => { scores[team.id] = team.score; });
+        teamsScoreRef.set(scores);
     }
     
+    // Автоматическое начисление очков при правильном ответе
     answersRef.on('value', (snapshot) => {
         const data = snapshot.val();
         if(!data || !data.winner || !data.answer) return;
         if(!waitingForAnswer || currentLocked || !currentQuestion) return;
         if(timerExpired) return;
+        
         const team = TEAMS.find(t=>t.id===data.winner);
         if(!team) return;
+        
         currentLocked = true;
         stopTimer();
+        
         const isCorrect = (data.answer === currentQuestion.correct);
         if(isCorrect) {
+            // АВТОМАТИЧЕСКИ НАЧИСЛЯЕМ ОЧКО
             team.score++;
             updateScoreboard();
-            const scores={}; TEAMS.forEach(t=>{scores[t.id]=t.score;});
-            teamsScoreRef.set(scores);
+            saveScoresToFirebase();
+            
             document.getElementById('statusDisplay').innerHTML = `🏆 ${team.name} ответил ПРАВИЛЬНО! +1 очко`;
             document.getElementById('statusDisplay').style.background = '#2e7d32';
-            document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => { if(btn.dataset.answer===currentQuestion.correct) btn.classList.add('correct'); });
+            document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => { 
+                if(btn.dataset.answer===currentQuestion.correct) btn.classList.add('correct'); 
+            });
         } else {
             const correctAnswerText = currentQuestion.answers[['A','B','C','D'].indexOf(currentQuestion.correct)];
             document.getElementById('statusDisplay').innerHTML = `❌ ${team.name} ответил НЕПРАВИЛЬНО! Правильный ответ: ${currentQuestion.correct}. ${correctAnswerText}`;
@@ -356,19 +358,28 @@
         waitingForAnswer = false;
     });
     
+    // Кнопка сброса очков (оставлена для ведущего)
+    document.getElementById('resetScoresBtn').onclick = () => {
+        if(confirm('Сбросить очки всех команд?')) {
+            TEAMS.forEach(t=>t.score=0);
+            updateScoreboard();
+            saveScoresToFirebase();
+        }
+    };
+    
     document.getElementById('nextQuestionBtn').onclick = () => {
         if(!currentQuiz) { alert('Сначала выберите викторину'); return; }
         if(currentQuestionIndex+1 < currentQuiz.questions.length) loadQuestion(currentQuestionIndex+1);
         else alert('🎉 Последний вопрос! Выберите другую викторину.');
     };
-    document.getElementById('resetAnswersBtn').onclick = resetRound;
-    document.getElementById('resetScoresBtn').onclick = () => {
-        if(confirm('Сбросить очки всех команд?')) {
-            TEAMS.forEach(t=>t.score=0);
-            updateScoreboard();
-            const scores={}; TEAMS.forEach(t=>{scores[t.id]=0;});
-            teamsScoreRef.set(scores);
-        }
+    document.getElementById('resetAnswersBtn').onclick = () => {
+        waitingForAnswer = true;
+        currentLocked = false;
+        if(timerExpired) { resetTimer(); startTimer(); }
+        document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
+        document.getElementById('statusDisplay').style.background = '#1a1f2e';
+        document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => { btn.classList.remove('correct','wrong'); btn.disabled=false; btn.style.opacity='1'; });
+        answersRef.set({ locked: false, winner: null, answer: null, expired: false });
     };
     
     function generateQRs() {
@@ -399,7 +410,7 @@
         };
     });
     
-    // ========== ТЕЛЕФОННЫЙ РЕЖИМ (ПРОСТОЙ И НАДЁЖНЫЙ) ==========
+    // ========== ТЕЛЕФОННЫЙ РЕЖИМ ==========
     const teamParam = new URLSearchParams(window.location.search).get('team');
     if (teamParam && TEAMS.some(t => t.id === teamParam)) {
         const team = TEAMS.find(t => t.id === teamParam);
@@ -477,7 +488,6 @@
             });
         }
         
-        // Слушаем новые вопросы
         gameStateRef.on('value', (snap) => {
             const data = snap.val();
             if (data && data.question && data.timestamp !== lastQuestionTimestamp) {
@@ -490,24 +500,26 @@
             }
         });
         
-        // Слушаем сброс (после ответа или нажатия кнопки "Сброс ответов")
         answersRef.on('value', (snap) => {
             const data = snap.val();
             if (data && !data.locked && !data.winner) {
-                // Раунд сброшен - можно отвечать снова
                 canAnswer = true;
                 statusMsg.innerText = '🟢 Готов к ответу';
                 statusMsg.style.color = '#88ff88';
-                // Перерисовываем кнопки, делаем их активными
                 const btns = answersContainer.querySelectorAll('button');
                 btns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
             } else if (data && data.locked && data.winner === team.id) {
-                statusMsg.innerText = '✅ Ваш ответ принят!';
+                statusMsg.innerText = '✅ Ответ принят!';
                 statusMsg.style.color = '#88ff88';
                 const btns = answersContainer.querySelectorAll('button');
                 btns.forEach(btn => { btn.disabled = true; });
             } else if (data && data.locked && data.winner && data.winner !== team.id) {
                 statusMsg.innerText = '❌ Соперник ответил быстрее';
+                statusMsg.style.color = '#ff8888';
+                const btns = answersContainer.querySelectorAll('button');
+                btns.forEach(btn => { btn.disabled = true; });
+            } else if (data && data.expired) {
+                statusMsg.innerText = '⏰ Время вышло!';
                 statusMsg.style.color = '#ff8888';
                 const btns = answersContainer.querySelectorAll('button');
                 btns.forEach(btn => { btn.disabled = true; });
@@ -522,13 +534,13 @@
             }
             const snapshot = await answersRef.once('value');
             const current = snapshot.val();
-            if (current && current.locked) {
-                statusMsg.innerText = '❌ Кто-то уже ответил!';
+            if (current && (current.locked || current.expired)) {
+                if(current.expired) statusMsg.innerText = '⏰ Время вышло!';
+                else statusMsg.innerText = '❌ Кто-то уже ответил!';
                 statusMsg.style.color = '#ff8888';
                 return;
             }
             canAnswer = false;
-            // Блокируем кнопки сразу
             const btns = answersContainer.querySelectorAll('button');
             btns.forEach(btn => { btn.disabled = true; });
             statusMsg.innerText = '✅ Ответ отправлен!';
@@ -536,7 +548,6 @@
             answersRef.set({ winner: team.id, answer: answer, timestamp: Date.now(), locked: true });
         }
         
-        // Загружаем первый вопрос
         gameStateRef.once('value').then(snap => {
             const data = snap.val();
             if (data && data.question) {
