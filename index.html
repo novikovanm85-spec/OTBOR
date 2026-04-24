@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Викторина | Создание своих викторин</title>
+    <title>Викторина | Создание и редактирование</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -12,40 +12,36 @@
         body { font-family: 'Segoe UI', system-ui; background: #0a0c15; min-height: 100vh; padding: 20px; }
         .container { max-width: 1400px; margin: 0 auto; }
         
-        /* Режимы */
         .mode-selector { display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap; }
         .mode-btn { background: #2a2e45; border: none; color: white; padding: 12px 28px; border-radius: 40px; cursor: pointer; font-size: 1rem; }
         .mode-btn.active { background: #2e7d32; }
         
-        /* Панели */
         .panel { background: linear-gradient(145deg, #1a1f2e, #0f121c); border-radius: 48px; padding: 30px; margin-bottom: 30px; border: 1px solid rgba(255,255,255,0.1); }
         .panel-title { font-size: 1.5rem; font-weight: bold; margin-bottom: 20px; color: white; }
         
-        /* Список викторин */
         .quiz-list { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; }
         .quiz-card { background: #2a2e45; border-radius: 24px; padding: 20px; cursor: pointer; flex: 1; min-width: 200px; transition: 0.1s; }
         .quiz-card:hover { background: #3a3e55; transform: scale(1.01); }
         .quiz-card h3 { margin-bottom: 8px; }
         .quiz-card p { color: #aaa; font-size: 0.8rem; }
-        .delete-quiz { background: #b71c1c; border: none; color: white; padding: 5px 10px; border-radius: 20px; margin-top: 10px; cursor: pointer; font-size: 0.7rem; }
+        .quiz-actions { display: flex; gap: 10px; margin-top: 15px; }
+        .edit-quiz-btn { background: #ff9800; border: none; color: #1a1a2e; padding: 6px 12px; border-radius: 20px; cursor: pointer; font-size: 0.8rem; }
+        .delete-quiz-btn { background: #b71c1c; border: none; color: white; padding: 6px 12px; border-radius: 20px; cursor: pointer; font-size: 0.8rem; }
         
-        /* Редактор вопросов */
         .question-editor { background: #00000030; border-radius: 32px; padding: 20px; margin-bottom: 20px; }
         .question-row { margin-bottom: 20px; padding: 15px; background: #1a1f2e; border-radius: 24px; }
         .question-row input, .question-row textarea { width: 100%; padding: 12px; margin-bottom: 10px; background: #2a2e45; border: none; border-radius: 20px; color: white; font-family: inherit; }
         .answers-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
         .answers-row input { margin-bottom: 0; }
-        .correct-select { display: flex; gap: 15px; align-items: center; margin-top: 10px; }
-        .correct-select label { display: flex; align-items: center; gap: 5px; color: #ddd; }
+        .correct-select { display: flex; gap: 15px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+        .correct-select label { display: flex; align-items: center; gap: 5px; color: #ddd; cursor: pointer; }
         .remove-question { background: #b71c1c; border: none; color: white; padding: 8px 16px; border-radius: 20px; cursor: pointer; margin-top: 10px; }
         
-        /* Кнопки */
         .btn { background: #2a2e45; border: none; color: white; padding: 12px 28px; border-radius: 40px; cursor: pointer; font-size: 1rem; margin-right: 10px; margin-top: 10px; }
         .btn-primary { background: #2e7d32; }
         .btn-danger { background: #b71c1c; }
         .btn-warning { background: #ff9800; color: #1a1a2e; }
         
-        /* Таблица лидеров */
         .scoreboard { background: #00000030; border-radius: 32px; padding: 20px; margin-bottom: 30px; }
         .scoreboard h2 { margin-bottom: 20px; color: white; }
         .score-row { display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); }
@@ -55,7 +51,6 @@
         .score-buttons { display: flex; gap: 8px; }
         .score-btn { background: #2a2e45; border: none; color: white; width: 36px; height: 36px; border-radius: 20px; cursor: pointer; }
         
-        /* Вопрос и ответы (игровой режим) */
         .question-text { font-size: 1.8rem; font-weight: 700; margin-bottom: 30px; color: white; }
         .answers { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
         .answer-btn { background: #2a2e45; border: none; color: white; font-size: 1.2rem; padding: 20px; border-radius: 40px; text-align: left; cursor: pointer; }
@@ -81,17 +76,15 @@
 </head>
 <body>
 <div class="container" id="app">
-    <!-- Режимы -->
     <div class="mode-selector">
         <button class="mode-btn" data-mode="play">🎮 ИГРАТЬ</button>
         <button class="mode-btn" data-mode="create">✏️ СОЗДАТЬ ВИКТОРИНУ</button>
         <button class="mode-btn" data-mode="edit">📋 МОИ ВИКТОРИНЫ</button>
     </div>
     
-    <!-- ========== РЕЖИМ ИГРЫ ========== -->
+    <!-- РЕЖИМ ИГРЫ -->
     <div id="playMode" class="panel">
         <div class="status" id="statusDisplay">🟢 Готов к приёму ответов</div>
-        
         <div class="question-text" id="questionText">Выберите викторину из списка</div>
         <div class="answers" id="answersPanel">
             <button class="answer-btn" data-answer="A">🅰️ А.</button>
@@ -99,36 +92,32 @@
             <button class="answer-btn" data-answer="C">🅲️ В.</button>
             <button class="answer-btn" data-answer="D">🅳️ Г.</button>
         </div>
-        
         <div class="question-list" id="quizSelectList"></div>
         <div class="question-list" id="questionList"></div>
-        
         <div class="control-panel">
             <button class="btn btn-primary" id="nextQuestionBtn">➡️ СЛЕДУЮЩИЙ ВОПРОС</button>
             <button class="btn" id="resetAnswersBtn">🔄 СБРОС ОТВЕТОВ</button>
             <button class="btn btn-danger" id="resetScoresBtn">🔴 СБРОС ОЧКОВ</button>
         </div>
-        
         <div class="scoreboard">
             <h2>🏆 ТАБЛИЦА ЛИДЕРОВ</h2>
             <div id="scoreboardList"></div>
         </div>
-        
         <div class="qr-grid" id="qrGrid"></div>
     </div>
     
-    <!-- ========== РЕЖИМ СОЗДАНИЯ ВИКТОРИНЫ ========== -->
+    <!-- РЕЖИМ СОЗДАНИЯ/РЕДАКТИРОВАНИЯ -->
     <div id="createMode" class="panel hidden">
-        <div class="panel-title">✏️ СОЗДАНИЕ НОВОЙ ВИКТОРИНЫ</div>
+        <div class="panel-title" id="editorTitle">✏️ СОЗДАНИЕ НОВОЙ ВИКТОРИНЫ</div>
         <input type="text" id="quizName" placeholder="Название викторины (например: 'История', 'Музыка', 'Спорт')" style="width: 100%; padding: 15px; background: #2a2e45; border: none; border-radius: 30px; color: white; margin-bottom: 20px;">
-        
+        <input type="hidden" id="editQuizId" value="">
         <div id="questionsEditor"></div>
-        
         <button class="btn" id="addQuestionBtn">➕ ДОБАВИТЬ ВОПРОС</button>
         <button class="btn btn-primary" id="saveQuizBtn">💾 СОХРАНИТЬ ВИКТОРИНУ</button>
+        <button class="btn btn-warning" id="cancelEditBtn" style="display: none;">❌ ОТМЕНИТЬ РЕДАКТИРОВАНИЕ</button>
     </div>
     
-    <!-- ========== РЕЖИМ МОИХ ВИКТОРИН ========== -->
+    <!-- РЕЖИМ МОИХ ВИКТОРИН -->
     <div id="editMode" class="panel hidden">
         <div class="panel-title">📋 МОИ ВИКТОРИНЫ</div>
         <div id="savedQuizzesList"></div>
@@ -136,7 +125,6 @@
 </div>
 
 <script>
-    // ========== КОМАНДЫ ==========
     const TEAMS = [
         { id: 'team1', name: '🔴 КОМАНДА 1', color: '#ff4444', score: 0 },
         { id: 'team2', name: '🔵 КОМАНДА 2', color: '#4488ff', score: 0 },
@@ -146,15 +134,15 @@
         { id: 'team6', name: '🟠 КОМАНДА 6', color: '#ff8844', score: 0 }
     ];
     
-    // ========== РАБОТА С LOCALSTORAGE ==========
     let allQuizzes = [];
+    let editingQuizId = null;
     
+    // Загрузка/сохранение
     function loadQuizzes() {
         const saved = localStorage.getItem('quizzes');
         if (saved) {
             allQuizzes = JSON.parse(saved);
         } else {
-            // Викторина по умолчанию
             allQuizzes = [{
                 id: Date.now(),
                 name: "Пример викторины",
@@ -172,14 +160,14 @@
         localStorage.setItem('quizzes', JSON.stringify(allQuizzes));
     }
     
-    // ========== ПЕРЕМЕННЫЕ ИГРЫ ==========
+    // Переменные игры
     let currentQuiz = null;
     let currentQuestionIndex = 0;
     let currentQuestion = null;
     let waitingForAnswer = true;
     let currentLocked = false;
     
-    // ========== FIREBASE ==========
+    // Firebase
     const firebaseConfig = { databaseURL: "https://knopka-e92fb-default-rtdb.firebaseio.com/" };
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
@@ -188,7 +176,7 @@
     const gameStateRef = database.ref('/quiz_state');
     const resetRoundRef = database.ref('/quiz_reset');
     
-    // ========== ДОМ ЭЛЕМЕНТЫ ==========
+    // DOM элементы
     const playMode = document.getElementById('playMode');
     const createMode = document.getElementById('createMode');
     const editMode = document.getElementById('editMode');
@@ -205,11 +193,14 @@
     const questionListDiv = document.getElementById('questionList');
     const questionsEditor = document.getElementById('questionsEditor');
     const quizNameInput = document.getElementById('quizName');
+    const editQuizIdInput = document.getElementById('editQuizId');
     const addQuestionBtn = document.getElementById('addQuestionBtn');
     const saveQuizBtn = document.getElementById('saveQuizBtn');
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+    const editorTitle = document.getElementById('editorTitle');
     const savedQuizzesList = document.getElementById('savedQuizzesList');
     
-    // ========== РЕЖИМЫ ==========
+    // Режимы
     modeBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             modeBtns.forEach(b => b.classList.remove('active'));
@@ -219,12 +210,36 @@
             createMode.classList.add('hidden');
             editMode.classList.add('hidden');
             if (mode === 'play') playMode.classList.remove('hidden');
-            if (mode === 'create') createMode.classList.remove('hidden');
+            if (mode === 'create') { createMode.classList.remove('hidden'); startNewQuiz(); }
             if (mode === 'edit') { editMode.classList.remove('hidden'); displaySavedQuizzes(); }
         });
     });
     
-    // ========== РЕДАКТОР ВОПРОСОВ ==========
+    function startNewQuiz() {
+        editingQuizId = null;
+        editQuizIdInput.value = '';
+        quizNameInput.value = '';
+        editorTitle.innerText = '✏️ СОЗДАНИЕ НОВОЙ ВИКТОРИНЫ';
+        cancelEditBtn.style.display = 'none';
+        editingQuestions = [];
+        renderEditor();
+    }
+    
+    function editQuiz(quiz) {
+        editingQuizId = quiz.id;
+        editQuizIdInput.value = quiz.id;
+        quizNameInput.value = quiz.name;
+        editorTitle.innerText = '✏️ РЕДАКТИРОВАНИЕ: ' + quiz.name;
+        cancelEditBtn.style.display = 'inline-block';
+        editingQuestions = JSON.parse(JSON.stringify(quiz.questions));
+        renderEditor();
+        modeBtns.forEach(b => b.classList.remove('active'));
+        document.querySelector('[data-mode="create"]').classList.add('active');
+        playMode.classList.add('hidden');
+        createMode.classList.remove('hidden');
+        editMode.classList.add('hidden');
+    }
+    
     let editingQuestions = [];
     
     function renderEditor() {
@@ -245,14 +260,13 @@
                     <label><input type="radio" name="correct_${idx}" value="A" ${q.correct === 'A' ? 'checked' : ''}> А</label>
                     <label><input type="radio" name="correct_${idx}" value="B" ${q.correct === 'B' ? 'checked' : ''}> Б</label>
                     <label><input type="radio" name="correct_${idx}" value="C" ${q.correct === 'C' ? 'checked' : ''}> В</label>
-                    <label><input type="radio"name="correct_${idx}" value="D" ${q.correct === 'D' ? 'checked' : ''}> Г</label>
+                    <label><input type="radio" name="correct_${idx}" value="D" ${q.correct === 'D' ? 'checked' : ''}> Г</label>
                 </div>
                 <button class="remove-question" data-index="${idx}">🗑️ Удалить вопрос</button>
             `;
             questionsEditor.appendChild(div);
         });
         
-        // Добавляем обработчики
         document.querySelectorAll('#questionsEditor input[type="text"]').forEach(inp => {
             inp.addEventListener('change', (e) => {
                 const idx = parseInt(inp.dataset.index);
@@ -292,62 +306,100 @@
         if (!name) { alert('Введите название викторины'); return; }
         if (editingQuestions.length === 0) { alert('Добавьте хотя бы один вопрос'); return; }
         
-        const newQuiz = {
-            id: Date.now(),
-            name: name,
-            questions: editingQuestions.map(q => ({ ...q }))
-        };
-        allQuizzes.push(newQuiz);
-        saveQuizzes();
-        alert(`Викторина "${name}" сохранена!`);
-        editingQuestions = [];
-        quizNameInput.value = '';
-        renderEditor();
+        if (editingQuizId) {
+            // Редактирование существующей
+            const index = allQuizzes.findIndex(q => q.id === editingQuizId);
+            if (index !== -1) {
+                allQuizzes[index] = {
+                    id: editingQuizId,
+                    name: name,
+                    questions: editingQuestions.map(q => ({ ...q }))
+                };
+                saveQuizzes();
+                alert(`Викторина "${name}" обновлена!`);
+            }
+        } else {
+            // Создание новой
+            const newQuiz = {
+                id: Date.now(),
+                name: name,
+                questions: editingQuestions.map(q => ({ ...q }))
+            };
+            allQuizzes.push(newQuiz);
+            saveQuizzes();
+            alert(`Викторина "${name}" сохранена!`);
+        }
+        startNewQuiz();
         displaySavedQuizzes();
+        displayQuizList();
+    });
+    
+    cancelEditBtn.addEventListener('click', () => {
+        startNewQuiz();
     });
     
     function displaySavedQuizzes() {
         savedQuizzesList.innerHTML = '';
-        allQuizzes.forEach((quiz, idx) => {
+        if (allQuizzes.length === 0) {
+            savedQuizzesList.innerHTML = '<div style="color: #aaa;">Нет викторин. Создайте новую в режиме "СОЗДАТЬ ВИКТОРИНУ"</div>';
+            return;
+        }
+        allQuizzes.forEach((quiz) => {
             const card = document.createElement('div');
             card.className = 'quiz-card';
             card.innerHTML = `
                 <h3>${escapeHtml(quiz.name)}</h3>
                 <p>${quiz.questions.length} вопросов</p>
-                <button class="delete-quiz" data-id="${quiz.id}">🗑️ Удалить</button>
+                <div class="quiz-actions">
+                    <button class="edit-quiz-btn" data-id="${quiz.id}">✏️ Редактировать</button>
+                    <button class="delete-quiz-btn" data-id="${quiz.id}">🗑️ Удалить</button>
+                </div>
             `;
             savedQuizzesList.appendChild(card);
         });
-        document.querySelectorAll('.delete-quiz').forEach(btn => {
+        
+        document.querySelectorAll('.edit-quiz-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const id = parseInt(btn.dataset.id);
-                allQuizzes = allQuizzes.filter(q => q.id !== id);
-                saveQuizzes();
-                displaySavedQuizzes();
-                displayQuizList();
+                const quiz = allQuizzes.find(q => q.id === id);
+                if (quiz) editQuiz(quiz);
+            });
+        });
+        
+        document.querySelectorAll('.delete-quiz-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = parseInt(btn.dataset.id);
+                if (confirm('Удалить викторину?')) {
+                    allQuizzes = allQuizzes.filter(q => q.id !== id);
+                    saveQuizzes();
+                    displaySavedQuizzes();
+                    displayQuizList();
+                    if (currentQuiz && currentQuiz.id === id) currentQuiz = null;
+                }
             });
         });
     }
     
-    // ========== ВЫБОР ВИКТОРИНЫ ДЛЯ ИГРЫ ==========
     function displayQuizList() {
         quizSelectList.innerHTML = '';
+        if (allQuizzes.length === 0) {
+            quizSelectList.innerHTML = '<div style="color: #aaa;">Нет викторин. Создайте новую в режиме "СОЗДАТЬ ВИКТОРИНУ"</div>';
+            return;
+        }
         allQuizzes.forEach(quiz => {
             const btn = document.createElement('button');
             btn.className = 'q-btn';
             btn.textContent = quiz.name;
             btn.onclick = () => {
-                currentQuiz = quiz;
+                currentQuiz = JSON.parse(JSON.stringify(quiz));
                 currentQuestionIndex = 0;
                 loadQuestion(0);
                 displayQuestionNumbers();
             };
             quizSelectList.appendChild(btn);
         });
-        if (allQuizzes.length === 0) {
-            quizSelectList.innerHTML = '<div style="color: #aaa;">Нет викторин. Создайте новую в режиме "СОЗДАТЬ ВИКТОРИНУ"</div>';
-        }
     }
     
     function displayQuestionNumbers() {
@@ -392,7 +444,6 @@
         resetRoundRef.set(true);
     }
     
-    // ========== ТАБЛИЦА ЛИДЕРОВ ==========
     function updateScoreboard() {
         const sorted = [...TEAMS].sort((a, b) => b.score - a.score);
         scoreboardList.innerHTML = sorted.map(team => `
@@ -438,7 +489,6 @@
         });
     }
     
-    // ========== ОБРАБОТКА ОТВЕТОВ ==========
     function resetRound() {
         waitingForAnswer = true;
         currentLocked = false;
@@ -484,7 +534,6 @@
         }
     });
     
-    // ========== КНОПКИ ==========
     nextQuestionBtn.addEventListener('click', () => {
         if (!currentQuiz) { alert('Сначала выберите викторину из списка'); return; }
         if (currentQuestionIndex + 1 < currentQuiz.questions.length) {
@@ -503,7 +552,6 @@
         }
     });
     
-    // ========== QR-КОДЫ ==========
     function generateQRs() {
         const baseUrl = window.location.href.split('?')[0].split('#')[0];
         const cleanBase = baseUrl.endsWith('index.html') ? baseUrl.replace('index.html', '') : baseUrl;
@@ -517,7 +565,7 @@
         });
     }
     
-    // ========== ТЕЛЕФОННЫЙ РЕЖИМ ==========
+    // Телефонный режим
     const urlParams = new URLSearchParams(window.location.search);
     const teamParam = urlParams.get('team');
     
@@ -596,39 +644,4 @@
                     btn.style.cursor = 'pointer';
                     btn.style.margin = '5px';
                     btn.disabled = hasAnswered;
-                    btn.onclick = () => sendAnswer(letter);
-                    answersContainer.appendChild(btn);
-                });
-                hasAnswered = false;
-                statusMsg.innerText = '🟢 Готов к ответу';
-            }
-        });
-        
-        resetRoundRef.on('value', (snap) => {
-            if (snap.val() === true) {
-                hasAnswered = false;
-                statusMsg.innerText = '🟢 Новый вопрос!';
-            }
-        });
-        
-        async function sendAnswer(answer) {
-            if (hasAnswered) { statusMsg.innerText = '⏳ Вы уже ответили!'; return; }
-            const stateSnap = await answersRef.once('value');
-            const state = stateSnap.val();
-            if (state && state.locked) { statusMsg.innerText = '❌ Кто-то уже ответил!'; return; }
-            hasAnswered = true;
-            statusMsg.innerText = '✅ Ответ отправлен!';
-            answersRef.set({ winner: team.id, answer: answer, timestamp: Date.now(), locked: true });
-        }
-    }
-    
-    // ========== ИНИЦИАЛИЗАЦИЯ ==========
-    loadQuizzes();
-    loadScoresFromFirebase();
-    updateScoreboard();
-    generateQRs();
-    displayQuizList();
-    modeBtns[0].click();
-</script>
-</body>
-</html>
+                    btn.onclick = () =>
