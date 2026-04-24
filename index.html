@@ -10,8 +10,28 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', system-ui; background: #0a0c15; min-height: 100vh; padding: 20px; }
-        .container { max-width: 1400px; margin: 0 auto; }
-        .mode-selector { display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap; }
+        .container { max-width: 1400px; margin: 0 auto; position: relative; }
+        
+        /* Кнопка на весь экран */
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            font-size: 1.2rem;
+            padding: 10px 18px;
+            border-radius: 40px;
+            cursor: pointer;
+            z-index: 1000;
+            font-family: inherit;
+            transition: 0.2s;
+        }
+        .fullscreen-btn:hover { background: rgba(0,0,0,0.8); transform: scale(1.02); }
+        
+        .mode-selector { display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap; margin-top: 10px; }
         .mode-btn { background: #2a2e45; border: none; color: white; padding: 12px 28px; border-radius: 40px; cursor: pointer; font-size: 1rem; }
         .mode-btn.active { background: #2e7d32; }
         .panel { background: linear-gradient(145deg, #1a1f2e, #0f121c); border-radius: 48px; padding: 30px; margin-bottom: 30px; border: 1px solid rgba(255,255,255,0.1); }
@@ -56,15 +76,26 @@
         .qr-card canvas { background: white; padding: 10px; border-radius: 16px; width: 120px; height: 120px; margin: 10px auto; }
         .status { background: #1a1f2e; border-radius: 20px; padding: 10px 20px; margin-bottom: 20px; display: inline-block; color: white; }
         .hidden { display: none; }
+        
+        /* Полноэкранный режим */
+        :-webkit-full-screen .container { max-width: 100%; padding: 20px; }
+        :-moz-full-screen .container { max-width: 100%; padding: 20px; }
+        :fullscreen .container { max-width: 100%; padding: 20px; }
+        :fullscreen .fullscreen-btn { position: fixed; top: 20px; right: 20px; }
+        
         @media (max-width: 768px) {
             .question-text { font-size: 1.2rem; }
             .answer-btn { font-size: 1rem; padding: 15px; }
             .team-name { width: 70px; font-size: 0.8rem; }
+            .fullscreen-btn { padding: 6px 12px; font-size: 0.9rem; top: 10px; right: 10px; }
         }
     </style>
 </head>
 <body>
 <div class="container" id="app">
+    <!-- Кнопка на весь экран -->
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶ На весь экран</button>
+    
     <div class="mode-selector">
         <button class="mode-btn active" data-mode="play">🎮 ИГРАТЬ</button>
         <button class="mode-btn" data-mode="create">✏️ СОЗДАТЬ ВИКТОРИНУ</button>
@@ -111,6 +142,25 @@
 </div>
 
 <script>
+    // ========== ПОЛНОЭКРАННЫЙ РЕЖИМ ==========
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const rootElement = document.documentElement;
+    
+    function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            rootElement.requestFullscreen().catch(err => console.warn(err));
+            fullscreenBtn.textContent = '✖ Выйти';
+        } else {
+            document.exitFullscreen();
+            fullscreenBtn.textContent = '⛶ На весь экран';
+        }
+    }
+    fullscreenBtn.addEventListener('click', toggleFullscreen);
+    document.addEventListener('fullscreenchange', () => {
+        fullscreenBtn.textContent = document.fullscreenElement ? '✖ Выйти' : '⛶ На весь экран';
+    });
+    
+    // ========== ОСТАЛЬНОЙ КОД ==========
     const TEAMS = [
         { id: 'team1', name: '🔴 КОМАНДА 1', color: '#ff4444', score: 0 },
         { id: 'team2', name: '🔵 КОМАНДА 2', color: '#4488ff', score: 0 },
@@ -210,7 +260,6 @@
     }
     
     function editQuiz(quiz) {
-        // Загружаем данные викторины в редактор
         editingQuizId = quiz.id;
         document.getElementById('editQuizId').value = quiz.id;
         document.getElementById('quizName').value = quiz.name;
@@ -219,7 +268,6 @@
         editingQuestions = JSON.parse(JSON.stringify(quiz.questions));
         renderEditor();
         
-        // Переключаемся на вкладку СОЗДАТЬ ВИКТОРИНУ
         document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
         document.querySelector('[data-mode="create"]').classList.add('active');
         document.getElementById('playMode').classList.add('hidden');
@@ -237,14 +285,12 @@
         if (!name) { alert('Введите название'); return; }
         if (editingQuestions.length === 0) { alert('Добавьте вопросы'); return; }
         if (editingQuizId) {
-            // Обновляем существующую викторину
             const idx = allQuizzes.findIndex(q => q.id === editingQuizId);
             if (idx !== -1) {
                 allQuizzes[idx] = { id: editingQuizId, name: name, questions: editingQuestions.map(q => ({...q})) };
                 alert(`Викторина "${name}" обновлена!`);
             }
         } else {
-            // Создаём новую викторину
             allQuizzes.push({ id: Date.now(), name: name, questions: editingQuestions.map(q => ({...q})) });
             alert(`Викторина "${name}" сохранена!`);
         }
@@ -252,7 +298,6 @@
         startNewQuiz();
         displaySavedQuizzes();
         displayQuizList();
-        // Если в режиме редактирования была открыта эта викторина в игре, обновляем
         if (currentQuiz && currentQuiz.id === editingQuizId) {
             currentQuiz = JSON.parse(JSON.stringify(allQuizzes.find(q => q.id === editingQuizId)));
         }
@@ -280,7 +325,6 @@
             `;
             container.appendChild(card);
         });
-        // Добавляем обработчики ПОСЛЕ создания карточек
         document.querySelectorAll('.edit-quiz-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -457,7 +501,6 @@
         });
     }
     
-    // Переключение режимов
     document.querySelectorAll('.mode-btn').forEach(btn => {
         btn.onclick = () => {
             document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
@@ -480,7 +523,6 @@
         };
     });
     
-    // Телефонный режим
     const teamParam = new URLSearchParams(window.location.search).get('team');
     if (teamParam && TEAMS.some(t => t.id === teamParam)) {
         const team = TEAMS.find(t => t.id === teamParam);
