@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Викторина | Таймер 60 секунд</title>
+    <title>Викторина | Таймер только ведущий</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -36,7 +36,6 @@
         .panel { background: linear-gradient(145deg, #1a1f2e, #0f121c); border-radius: 48px; padding: 30px; margin-bottom: 30px; border: 1px solid rgba(255,255,255,0.1); }
         .panel-title { font-size: 1.5rem; font-weight: bold; margin-bottom: 20px; color: white; }
         
-        /* Таймер */
         .timer-panel {
             background: #00000040;
             border-radius: 60px;
@@ -116,7 +115,6 @@
         .answer-btn { background: #2a2e45; border: none; color: white; font-size: 1.2rem; padding: 20px; border-radius: 40px; text-align: left; cursor: pointer; }
         .answer-btn.correct { background: #2e7d32; box-shadow: 0 0 15px #2e7d32; }
         .answer-btn.wrong { background: #b71c1c; }
-        .answer-btn.disabled { opacity: 0.5; cursor: not-allowed; }
         .question-list { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0; }
         .q-btn { background: #2a2e45; border: none; color: white; padding: 10px 20px; border-radius: 30px; cursor: pointer; }
         .q-btn.active { background: #2e7d32; }
@@ -291,12 +289,10 @@
                     timerExpired = true;
                     document.getElementById('timerStatus').innerHTML = '⏰ ВРЕМЯ ВЫШЛО!';
                     document.getElementById('timerStatus').style.color = '#ff6666';
-                    // Блокируем кнопки ответов на экране ведущего
                     document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => {
                         btn.disabled = true;
                         btn.style.opacity = '0.5';
                     });
-                    // Отправляем сигнал, что время вышло
                     answersRef.set({ locked: true, expired: true, winner: null, answer: null });
                     document.getElementById('statusDisplay').innerHTML = '⏰ Время вышло! Никто не ответил.';
                     document.getElementById('statusDisplay').style.background = '#b71c1c';
@@ -312,7 +308,6 @@
         updateTimerDisplay();
         document.getElementById('timerStatus').innerHTML = '⏱️ Время на ответ';
         document.getElementById('timerStatus').style.color = '#aaa';
-        // Разблокируем кнопки
         document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => {
             btn.disabled = false;
             btn.style.opacity = '1';
@@ -518,7 +513,6 @@
         });
         displayQuestionNumbers();
         
-        // Запускаем таймер
         resetTimer();
         startTimer();
         
@@ -527,8 +521,7 @@
             answers: currentQuestion.answers, 
             correct: currentQuestion.correct,
             questionId: Date.now() + index,
-            active: true,
-            timeLeft: 60
+            active: true
         });
         
         document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
@@ -684,7 +677,7 @@
         };
     });
     
-    // ========== ТЕЛЕФОННЫЙ РЕЖИМ ==========
+    // ========== ТЕЛЕФОННЫЙ РЕЖИМ (БЕЗ ТАЙМЕРА) ==========
     const teamParam = new URLSearchParams(window.location.search).get('team');
     if (teamParam && TEAMS.some(t => t.id === teamParam)) {
         const team = TEAMS.find(t => t.id === teamParam);
@@ -710,18 +703,6 @@
         title.style.fontSize = '2rem';
         title.style.marginBottom = '20px';
         
-        const timerDisplayPhone = document.createElement('div');
-        timerDisplayPhone.style.background = '#00000040';
-        timerDisplayPhone.style.borderRadius = '40px';
-        timerDisplayPhone.style.padding = '10px';
-        timerDisplayPhone.style.marginBottom = '20px';
-        timerDisplayPhone.style.fontSize = '1.5rem';
-        timerDisplayPhone.style.fontWeight = 'bold';
-        timerDisplayPhone.style.fontFamily = 'monospace';
-        timerDisplayPhone.style.color = '#0f0';
-        timerDisplayPhone.id = 'phoneTimer';
-        timerDisplayPhone.innerText = '01:00';
-        
         const questionDisplay = document.createElement('div');
         questionDisplay.style.background = '#00000040';
         questionDisplay.style.borderRadius = '24px';
@@ -743,7 +724,6 @@
         statusMsg.style.color = '#ddd';
         
         container.appendChild(title);
-        container.appendChild(timerDisplayPhone);
         container.appendChild(questionDisplay);
         container.appendChild(answersContainer);
         container.appendChild(statusMsg);
@@ -751,19 +731,6 @@
         
         let currentQuestionId = null;
         let hasAnswered = false;
-        let phoneTimerInterval = null;
-        
-        function updatePhoneTimer(seconds) {
-            const mins = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            timerDisplayPhone.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-            if (seconds <= 0) {
-                timerDisplayPhone.style.color = '#ff6666';
-                if (phoneTimerInterval) clearInterval(phoneTimerInterval);
-            } else {
-                timerDisplayPhone.style.color = '#0f0';
-            }
-        }
         
         function renderAnswers(answers) {
             answersContainer.innerHTML = '';
@@ -795,21 +762,6 @@
                 hasAnswered = false;
                 statusMsg.innerText = '🟢 Готов к ответу';
                 statusMsg.style.color = '#88ff88';
-                if (phoneTimerInterval) clearInterval(phoneTimerInterval);
-                let seconds = 60;
-                updatePhoneTimer(seconds);
-                phoneTimerInterval = setInterval(() => {
-                    if (seconds > 0) {
-                        seconds--;
-                        updatePhoneTimer(seconds);
-                        if (seconds === 0) {
-                            clearInterval(phoneTimerInterval);
-                            statusMsg.innerText = '⏰ Время вышло!';
-                            statusMsg.style.color = '#ff8888';
-                            document.querySelectorAll('#phoneAnswers button').forEach(btn => btn.disabled = true);
-                        }
-                    }
-                }, 1000);
             }
         });
         
@@ -851,20 +803,6 @@
                 currentQuestionId = data.questionId;
                 questionDisplay.innerText = data.question;
                 renderAnswers(data.answers);
-                if (phoneTimerInterval) clearInterval(phoneTimerInterval);
-                let seconds = 60;
-                updatePhoneTimer(seconds);
-                phoneTimerInterval = setInterval(() => {
-                    if (seconds > 0) {
-                        seconds--;
-                        updatePhoneTimer(seconds);
-                        if (seconds === 0) {
-                            clearInterval(phoneTimerInterval);
-                            statusMsg.innerText = '⏰ Время вышло!';
-                            statusMsg.style.color = '#ff8888';
-                        }
-                    }
-                }, 1000);
             }
         });
     }
