@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Викторина | Таймер только ведущий</title>
+    <title>Викторина | Работает на всех вопросах</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -283,20 +283,16 @@
         resetTimer();
         startTimer();
         
-        // ОТПРАВЛЯЕМ НОВЫЙ ВОПРОС НА ТЕЛЕФОНЫ (с уникальным ID)
+        // Отправляем вопрос на телефоны
         gameStateRef.set({ 
             question: currentQuestion.text, 
             answers: currentQuestion.answers, 
             correct: currentQuestion.correct,
-            questionId: Date.now() + index,
-            active: true
+            timestamp: Date.now()
         });
         
-        // Сбрасываем состояние ответов в Firebase
+        // Сбрасываем состояние ответов
         answersRef.set({ locked: false, winner: null, answer: null, expired: false });
-        
-        // Отправляем сигнал сброса на телефоны
-        resetRoundRef.set(true);
         
         document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
         document.getElementById('statusDisplay').style.background = '#1a1f2e';
@@ -328,7 +324,6 @@
         document.getElementById('statusDisplay').style.background = '#1a1f2e';
         document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => { btn.classList.remove('correct','wrong'); btn.disabled=false; btn.style.opacity='1'; });
         answersRef.set({ locked: false, winner: null, answer: null, expired: false });
-        resetRoundRef.set(true);
     }
     
     answersRef.on('value', (snapshot) => {
@@ -404,12 +399,13 @@
         };
     });
     
-    // ========== ТЕЛЕФОННЫЙ РЕЖИМ (ИСПРАВЛЕННЫЙ) ==========
+    // ========== ТЕЛЕФОННЫЙ РЕЖИМ (ПРОСТОЙ И НАДЁЖНЫЙ) ==========
     const teamParam = new URLSearchParams(window.location.search).get('team');
     if (teamParam && TEAMS.some(t => t.id === teamParam)) {
         const team = TEAMS.find(t => t.id === teamParam);
         document.body.innerHTML = '';
         document.body.style.background = '#0a0c15';
+        document.body.style.margin = '0';
         document.body.style.display = 'flex';
         document.body.style.justifyContent = 'center';
         document.body.style.alignItems = 'center';
@@ -437,8 +433,10 @@
         questionDisplay.style.marginBottom = '30px';
         questionDisplay.style.fontSize = '1.2rem';
         questionDisplay.style.color = '#ddd';
+        questionDisplay.id = 'phoneQuestion';
         
         const answersContainer = document.createElement('div');
+        answersContainer.id = 'phoneAnswers';
         answersContainer.style.display = 'grid';
         answersContainer.style.gap = '12px';
         answersContainer.style.marginBottom = '20px';
@@ -456,10 +454,10 @@
         container.appendChild(statusMsg);
         document.body.appendChild(container);
         
-        let currentQuestionId = null;
-        let hasAnswered = false;
+        let canAnswer = true;
+        let lastQuestionTimestamp = 0;
         
-        function renderAnswers(answers) {
+        function renderButtons(answers) {
             answersContainer.innerHTML = '';
             const letters = ['A', 'B', 'C', 'D'];
             letters.forEach(letter => {
@@ -473,73 +471,78 @@
                 btn.style.borderRadius = '30px';
                 btn.style.fontSize = '1.2rem';
                 btn.style.cursor = 'pointer';
-                btn.style.margin = '5px';
-                btn.disabled = false;  // ВАЖНО: кнопки активны по умолчанию
+                btn.style.width = '100%';
                 btn.onclick = () => sendAnswer(letter);
                 answersContainer.appendChild(btn);
             });
         }
         
-        // Слушаем изменения вопроса
+        // Слушаем новые вопросы
         gameStateRef.on('value', (snap) => {
             const data = snap.val();
-            if (data && data.question) {
-                // Если это новый вопрос или изменился ID вопроса
-                if (data.questionId !== currentQuestionId) {
-                    currentQuestionId = data.questionId;
-                    questionDisplay.innerText = data.question;
-                    renderAnswers(data.answers);
-                    hasAnswered = false;
-                    statusMsg.innerText = '🟢 Готов к ответу';
-                    statusMsg.style.color = '#88ff88';
-                }
+            if (data && data.question && data.timestamp !== lastQuestionTimestamp) {
+                lastQuestionTimestamp = data.timestamp;
+                questionDisplay.innerText = data.question;
+                renderButtons(data.answers);
+                canAnswer = true;
+                statusMsg.innerText = '🟢 Готов к ответу';
+                statusMsg.style.color = '#88ff88';
             }
         });
         
-        // Слушаем сигнал сброса раунда (новый вопрос)
-        resetRoundRef.on('value', (snap) => {
-            if (snap.val() === true) {
-                hasAnswered = false;
-                statusMsg.innerText = '🟢 Новый вопрос!';
+        // Слушаем сброс (после ответа или нажатия кнопки "Сброс ответов")
+        answersRef.on('value', (snap) => {
+            const data = snap.val();
+            if (data && !data.locked && !data.winner) {
+                // Раунд сброшен - можно отвечать снова
+                canAnswer = true;
+                statusMsg.innerText = '🟢 Готов к ответу';
                 statusMsg.style.color = '#88ff88';
-                // Перерисовываем кнопки, чтобы они стали активными
-                gameStateRef.once('value').then(snap => {
-                    const data = snap.val();
-                    if (data && data.answers) {
-                        renderAnswers(data.answers);
-                    }
-                });
+                // Перерисовываем кнопки, делаем их активными
+                const btns = answersContainer.querySelectorAll('button');
+                btns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
+            } else if (data && data.locked && data.winner === team.id) {
+                statusMsg.innerText = '✅ Ваш ответ принят!';
+                statusMsg.style.color = '#88ff88';
+                const btns = answersContainer.querySelectorAll('button');
+                btns.forEach(btn => { btn.disabled = true; });
+            } else if (data && data.locked && data.winner && data.winner !== team.id) {
+                statusMsg.innerText = '❌ Соперник ответил быстрее';
+                statusMsg.style.color = '#ff8888';
+                const btns = answersContainer.querySelectorAll('button');
+                btns.forEach(btn => { btn.disabled = true; });
             }
         });
         
         async function sendAnswer(answer) {
-            if (hasAnswered) {
+            if (!canAnswer) {
                 statusMsg.innerText = '⏳ Вы уже ответили!';
                 statusMsg.style.color = '#ffaa66';
                 return;
             }
-            const state = (await answersRef.once('value')).val();
-            if (state && (state.locked || state.expired)) {
-                if (state.expired) statusMsg.innerText = '⏰ Время вышло!';
-                else statusMsg.innerText = '❌ Кто-то уже ответил!';
+            const snapshot = await answersRef.once('value');
+            const current = snapshot.val();
+            if (current && current.locked) {
+                statusMsg.innerText = '❌ Кто-то уже ответил!';
                 statusMsg.style.color = '#ff8888';
                 return;
             }
-            hasAnswered = true;
+            canAnswer = false;
+            // Блокируем кнопки сразу
+            const btns = answersContainer.querySelectorAll('button');
+            btns.forEach(btn => { btn.disabled = true; });
             statusMsg.innerText = '✅ Ответ отправлен!';
             statusMsg.style.color = '#88ff88';
-            // Блокируем кнопки на телефоне
-            document.querySelectorAll('#answersContainer button').forEach(btn => { btn.disabled = true; });
             answersRef.set({ winner: team.id, answer: answer, timestamp: Date.now(), locked: true });
         }
         
-        // Начальная загрузка вопроса
+        // Загружаем первый вопрос
         gameStateRef.once('value').then(snap => {
             const data = snap.val();
             if (data && data.question) {
-                currentQuestionId = data.questionId;
+                lastQuestionTimestamp = data.timestamp;
                 questionDisplay.innerText = data.question;
-                renderAnswers(data.answers);
+                renderButtons(data.answers);
             }
         });
     }
