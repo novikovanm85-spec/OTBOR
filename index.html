@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Викторина | Прогресс команд | Пофиксены кнопки</title>
+    <title>Викторина | Прогресс команд</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -400,14 +400,13 @@
         document.getElementById('questionText').innerHTML = currentQuestion.text;
         const btns = document.querySelectorAll('#answersPanel .answer-btn');
         const letters = ['A', 'B', 'C', 'D'];
-                btns.forEach((btn, idx) => {
+        btns.forEach((btn, idx) => {
             const letter = letters[idx];
-            btn.innerHTML = `${emoji[letter]} ${letter}. ${currentQuestion.answers[idx]}`;
+            btn.innerHTML = `${letter}. ${currentQuestion.answers[idx]}`;
             btn.classList.remove('correct', 'wrong');
         });
         displayQuestionNumbers();
         
-        // Отправляем вопрос на телефоны с уникальным ID вопроса
         gameStateRef.set({ 
             question: currentQuestion.text, 
             answers: currentQuestion.answers, 
@@ -556,7 +555,7 @@
         };
     });
     
-    // ========== ТЕЛЕФОННЫЙ РЕЖИМ (ПОЛНОСТЬЮ ПЕРЕПИСАН) ==========
+    // ========== ТЕЛЕФОННЫЙ РЕЖИМ ==========
     const teamParam = new URLSearchParams(window.location.search).get('team');
     if (teamParam && TEAMS.some(t => t.id === teamParam)) {
         const team = TEAMS.find(t => t.id === teamParam);
@@ -611,15 +610,13 @@
         let currentQuestionId = null;
         let hasAnswered = false;
         
-        // Функция для создания кнопок ответов
         function renderAnswers(answers) {
             answersContainer.innerHTML = '';
             const letters = ['A', 'B', 'C', 'D'];
-            const emoji = { A: '🅰️', B: '🅱️', C: '🅲️', D: '🅳️' };
             letters.forEach(letter => {
                 const answerText = answers ? answers[letters.indexOf(letter)] : letter;
                 const btn = document.createElement('button');
-                btn.innerText = `${emoji[letter]} ${letter}. ${answerText}`;
+                btn.innerText = `${letter}. ${answerText}`;
                 btn.style.background = '#2a2e45';
                 btn.style.border = 'none';
                 btn.style.color = 'white';
@@ -634,7 +631,6 @@
             });
         }
         
-        // Слушаем изменения вопроса
         gameStateRef.on('value', (snap) => {
             const data = snap.val();
             if (data && data.question && data.questionId !== currentQuestionId) {
@@ -647,13 +643,11 @@
             }
         });
         
-        // Слушаем сброс раунда
         resetRoundRef.on('value', (snap) => {
             if (snap.val() === true) {
                 hasAnswered = false;
                 statusMsg.innerText = '🟢 Новый вопрос!';
                 statusMsg.style.color = '#88ff88';
-                // Перерисовываем кнопки (разблокируем)
                 gameStateRef.once('value').then(snap => {
                     const data = snap.val();
                     if (data && data.answers) {
@@ -681,7 +675,6 @@
             answersRef.set({ winner: team.id, answer: answer, timestamp: Date.now(), locked: true });
         }
         
-        // Начальная загрузка
         gameStateRef.once('value').then(snap => {
             const data = snap.val();
             if (data && data.question) {
