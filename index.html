@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Викторина | 6 команд | QR-код</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui; background: #0a0c15; min-height: 100vh; padding: 20px; }
+        
+        /* Экран ведущего */
+        .host-screen { max-width: 1400px; margin: 0 auto; }
+        
+        /* Вопрос и ответы */
+        .question-panel { background: linear-gradient(145deg, #1a1f2e, #0f121c); border-radius: 48px; padding: 30px; margin-bottom: 30px; border: 1px solid rgba(255,255,255,0.1); }
+        .question-text { font-size: 1.8rem; font-weight: 700; margin-bottom: 30px; color: white; }
+        .answers { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        .answer-btn { background: #2a2e45; border: none; color: white; font-size: 1.2rem; padding: 20px; border-radius: 40px; cursor: pointer; text-align: left; transition: 0.1s; }
+        .answer-btn:active { transform: scale(0.98); }
+        .answer-btn.correct { background: #2e7d32; box-shadow: 0 0 15px #2e7d32; }
+        .answer-btn.wrong { background: #b71c1c; }
+        
+        /* Таблица лидеров */
+        .scoreboard { background: #00000030; border-radius: 32px; padding: 20px; margin-bottom: 30px; }
+        .scoreboard h2 { margin-bottom: 20px; color: white; }
+        .score-row { display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .team-color { width: 12px; height: 12px; border-radius: 12px; }
+        .team-name { width: 100px; font-weight: bold; }
+        .team-score { flex: 1; font-size: 1.5rem; font-weight: bold; }
+        .score-buttons { display: flex; gap: 8px; }
+        .score-btn { background: #2a2e45; border: none; color: white; width: 36px; height: 36px; border-radius: 20px; cursor: pointer; font-size: 1.2rem; }
+        
+        /* Панель управления */
+        .control-panel { display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap; }
+        .control-btn { background: #2a2e45; border: none; color: white; font-size: 1rem; padding: 12px 24px; border-radius: 40px; cursor: pointer; }
+        .control-btn.next { background: #2e7d32; }
+        .control-btn.reset { background: #b71c1c; }
+        
+        /* QR-коды команд */
+        .qr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 30px; padding-top: 30px; border-top: 2px dashed rgba(255,255,255,0.15); }
+        .qr-card { background: #ffffff10; border-radius: 24px; padding: 15px; text-align: center; }
+        .qr-card canvas { background: white; padding: 10px; border-radius: 16px; width: 120px; height: 120px; margin: 10px auto; }
+        .qr-card .team-title { font-weight: bold; margin-bottom: 5px; }
+        
+        /* Статус */
+        .status { background: #1a1f2e; border-radius: 20px; padding: 10px 20px; margin-bottom: 20px; display: inline-block; }
+        .waiting { background: #ff9800; color: #1a1a2e; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; }
+        
+        @media (max-width: 768px) {
+            .question-text { font-size: 1.2rem; }
+            .answer-btn { font-size: 1rem; padding: 15px; }
+            .team-name { width: 70px; font-size: 0.9rem; }
+            .team-score { font-size: 1.2rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="host-screen" id="hostScreen">
+    <!-- Статус -->
+    <div class="status" id="statusDisplay">
+        🟢 Готов к приёму ответов
+    </div>
+    
+    <!-- Вопрос и ответы -->
+    <div class="question-panel">
+        <div class="question-text" id="questionText">Вопрос появится здесь</div>
+        <div class="answers" id="answersPanel">
+            <button class="answer-btn" data-answer="A">🅰️ А. Вариант ответа</button>
+            <button class="answer-btn" data-answer="B">🅱️ Б. Вариант ответа</button>
+            <button class="answer-btn" data-answer="C">🅲️ В. Вариант ответа</button>
+            <button class="answer-btn" data-answer="D">🅳️ Г. Вариант ответа</button>
+        </div>
+    </div>
+    
+    <!-- Таблица лидеров -->
+    <div class="scoreboard">
+        <h2>🏆 ТАБЛИЦА ЛИДЕРОВ</h2>
+        <div id="scoreboardList"></div>
+    </div>
+    
+    <!-- Панель управления -->
+    <div class="control-panel">
+        <button class="control-btn next" id="nextQuestionBtn">➡️ СЛЕДУЮЩИЙ ВОПРОС</button>
+        <button class="control-btn" id="resetAnswersBtn">🔄 СБРОС ОТВЕТОВ</button>
+        <button class="control-btn reset" id="resetScoresBtn">🔴 СБРОС ВСЕХ ОЧКОВ</button>
+    </div>
+    
+    <!-- QR-коды команд -->
+    <div class="qr-grid" id="qrGrid"></div>
+</div>
+
+<script>
+    // ========== КОНФИГУРАЦИЯ ==========
+    const TEAMS = [
+        { id: 'team1', name: '🔴 КОМАНДА 1', color: '#ff4444', score: 0 },
+        { id: 'team2', name: '🔵 КОМАНДА 2', color: '#4488ff', score: 0 },
+        { id: 'team3', name: '🟢 КОМАНДА 3', color: '#44ff44', score: 0 },
+        { id: 'team4', name: '🟡 КОМАНДА 4', color: '#ffdd44', score: 0 },
+        { id: 'team5', name: '🟣 КОМАНДА 5', color: '#ff44ff', score: 0 },
+        { id: 'team6', name: '🟠 КОМАНДА 6', color: '#ff8844', score: 0 }
+    ];
+    
+    // Текущий вопрос
+    let currentQuestion = {
+        text: "Какой язык программирования используется для создания этого сайта?",
+        answers: ["Python", "Java", "JavaScript", "C++"],
+        correct: "C"
+    };
+    
+    let waitingForAnswer = true;      // ждём ответы
+    let currentLocked = false;        // кто-то уже нажал
+    let currentWinner = null;          // кто нажал первым
+    let currentAnswer = null;          // какой ответ дан
+    
+    // ========== FIREBASE ==========
+    const firebaseConfig = { databaseURL: "https://knopka-e92fb-default-rtdb.firebaseio.com/" };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    const answersRef = database.ref('/quiz_answers');
+    const teamsScoreRef = database.ref('/quiz_scores');
+    const gameStateRef = database.ref('/quiz_state');
+    
+    // ========== DOM ЭЛЕМЕНТЫ ==========
+    const questionTextEl = document.getElementById('questionText');
+    const answersPanel = document.getElementById('answersPanel');
+    const statusDisplay = document.getElementById('statusDisplay');
+    const nextQuestionBtn = document.getElementById('nextQuestionBtn');
+    const resetAnswersBtn = document.getElementById('resetAnswersBtn');
+    const resetScoresBtn = document.getElementById('resetScoresBtn');
+    const scoreboardList = document.getElementById('scoreboardList');
+    const qrGrid = document.getElementById('qrGrid');
+    
+    // ========== ОБНОВЛЕНИЕ ВОПРОСА НА ЭКРАНЕ ==========
+    function updateQuestionDisplay() {
+        questionTextEl.textContent = currentQuestion.text;
+        const btns = answersPanel.querySelectorAll('.answer-btn');
+        btns.forEach((btn, idx) => {
+            const letter = ['A', 'B', 'C', 'D'][idx];
+            btn.innerHTML = `${letter === 'A' ? '🅰️' : letter === 'B' ? '🅱️' : letter === 'C' ? '🅲️' : '🅳️'} ${letter}. ${currentQuestion.answers[idx]}`;
+            btn.dataset.answer = letter;
+            btn.classList.remove('correct', 'wrong');
+            btn.disabled = false;
+        });
+    }
+    
+    // ========== ОБНОВЛЕНИЕ ТАБЛИЦЫ ЛИДЕРОВ ==========
+    function updateScoreboard() {
+        const sorted = [...TEAMS].sort((a, b) => b.score - a.score);
+        scoreboardList.innerHTML = sorted.map(team => `
+            <div class="score-row">
+                <div class="team-color" style="background: ${team.color}; box-shadow: 0 0 8px ${team.color}"></div>
+                <div class="team-name">${team.name}</div>
+                <div class="team-score">${team.score} очков</div>
+                <div class="score-buttons">
+                    <button class="score-btn" data-team="${team.id}" data-delta="1">+1</button>
+                    <button class="score-btn" data-team="${team.id}" data-delta="-1">-1</button>
+                </div>
+            </div>
+        `).join('');
+        
+        // Добавляем обработчики для кнопок +1/-1
+        document.querySelectorAll('.score-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const teamId = btn.dataset.team;
+                const delta = parseInt(btn.dataset.delta);
+                const team = TEAMS.find(t => t.id === teamId);
+                if (team) {
+                    team.score = Math.max(0, team.score + delta);
+                    updateScoreboard();
+                    saveScoresToFirebase();
+                }
+            });
+        });
+    }
+    
+    // Сохранить очки в Firebase
+    function saveScoresToFirebase() {
+        const scores = {};
+        TEAMS.forEach(team => { scores[team.id] = team.score; });
+        teamsScoreRef.set(scores);
+    }
+    
+    // Загрузить очки из Firebase
+    function loadScoresFromFirebase() {
+        teamsScoreRef.once('value').then(snapshot => {
+            const scores = snapshot.val();
+            if (scores) {
+                TEAMS.forEach(team => {
+                    if (scores[team.id] !== undefined) team.score = scores[team.id];
+                });
+                updateScoreboard();
+            }
+        });
+    }
+    
+    // ========== ОБРАБОТКА ОТВЕТОВ С ТЕЛЕФОНОВ ==========
+    function resetRound() {
+        waitingForAnswer = true;
+        currentLocked = false;
+        currentWinner = null;
+        currentAnswer = null;
+        statusDisplay.innerHTML = '🟢 Готов к приёму ответов';
+        statusDisplay.style.background = '#1a1f2e';
+        
+        // Визуально сбрасываем подсветку кнопок
+        const btns = answersPanel.querySelectorAll('.answer-btn');
+        btns.forEach(btn => {
+            btn.classList.remove('correct', 'wrong');
+            btn.disabled = false;
+        });
+        
+        // Очищаем базу для нового раунда
+        answersRef.set({ locked: false, winner: null, answer: null });
+    }
+    
+    // Слушаем ответы от телефонов
+    answersRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (!data) return;
+        
+        // Если кто-то нажал и мы ждём ответы
+        if (data.winner && data.answer && waitingForAnswer && !currentLocked) {
+            const teamId = data.winner;
+            const answer = data.answer;
+            const team = TEAMS.find(t => t.id === teamId);
+            
+            if (team) {
+                currentLocked = true;
+                currentWinner = teamId;
+                currentAnswer = answer;
+                
+                const isCorrect = (answer === currentQuestion.correct);
+                
+                if (isCorrect) {
+                    team.score += 1;
+                    saveScoresToFirebase();
+                    updateScoreboard();
+                    statusDisplay.innerHTML = `🏆 ${team.name} ответил(а) ПРАВИЛЬНО! +1 очко`;
+                    statusDisplay.style.background = '#2e7d32';
+                    
+                    // Подсвечиваем правильный ответ
+                    const btns = answersPanel.querySelectorAll('.answer-btn');
+                    btns.forEach(btn => {
+                        if (btn.dataset.answer === currentQuestion.correct) {
+                            btn.classList.add('correct');
+                        }
+                        if (btn.dataset.answer === answer && answer !== currentQuestion.correct) {
+                            btn.classList.add('wrong');
+                        }
+                        btn.disabled = true;
+                    });
+                } else {
+                    statusDisplay.innerHTML = `❌ ${team.name} ответил(а) НЕПРАВИЛЬНО! Правильный ответ: ${currentQuestion.correct}. ${currentQuestion.answers[['A','B','C','D'].indexOf(currentQuestion.correct)]}`;
+                    statusDisplay.style.background = '#b71c1c';
+                    
+                    // Подсвечиваем правильный ответ
+                    const btns = answersPanel.querySelectorAll('.answer-btn');
+                    btns.forEach(btn => {
+                        if (btn.dataset.answer === currentQuestion.correct) {
+                            btn.classList.add('correct');
+                        }
+                        if (btn.dataset.answer === answer) {
+                            btn.classList.add('wrong');
+                        }
+                        btn.disabled = true;
+                    });
+                }
+                
+                waitingForAnswer = false;
+            }
+        }
+    });
+    
+    // ========== УПРАВЛЕНИЕ ==========
+    nextQuestionBtn.addEventListener('click', () => {
+        resetRound();
+    });
+    
+    resetAnswersBtn.addEventListener('click', () => {
+        resetRound();
+    });
+    
+    resetScoresBtn.addEventListener('click', () => {
+        if (confirm('Сбросить очки всех команд?')) {
+            TEAMS.forEach(team => { team.score = 0; });
+            updateScoreboard();
+            saveScoresToFirebase();
+            resetRound();
+        }
+    });
+    
+    // ========== ГЕНЕРАЦИЯ QR-КОДОВ ==========
+    function generateQRs() {
+        const baseUrl = window.location.href.split('?')[0].split('#')[0];
+        const cleanBase = baseUrl.endsWith('index.html') ? baseUrl.replace('index.html', '') : baseUrl;
+        
+        TEAMS.forEach(team => {
+            const teamUrl = `${cleanBase}?team=${team.id}`;
+            const qrDiv = document.createElement('div');
+            qrDiv.className = 'qr-card';
+            qrDiv.innerHTML = `
+                <div class="team-title" style="color: ${team.color}">${team.name}</div>
+                <div id="qr_${team.id}"></div>
+                <div style="font-size: 10px; word-break: break-all;">${teamUrl.replace('https://', '')}</div>
+            `;
+            qrGrid.appendChild(qrDiv);
+            new QRCode(document.getElementById(`qr_${team.id}`), { text: teamUrl, width: 120, height: 120 });
+        });
+    }
+    
+    // ========== ТЕЛЕФОННЫЙ РЕЖИМ ==========
+    const urlParams = new URLSearchParams(window.location.search);
+    const teamParam = urlParams.get('team');
+    
+    if (teamParam && TEAMS.some(t => t.id === teamParam)) {
+        // Телефонный режим
+        const team = TEAMS.find(t => t.id === teamParam);
+        document.body.innerHTML = '';
+        document.body.style.background = '#0a0c15';
+        document.body.style.margin = '0';
+        document.body.style.display = 'flex';
+        document.body.style.justifyContent = 'center';
+        document.body.style.alignItems = 'center';
+        document.body.style.minHeight = '100vh';
+        document.body.style.padding = '20px';
+        
+        const container = document.createElement('div');
+        container.style.maxWidth = '500px';
+        container.style.width = '100%';
+        container.style.background = 'linear-gradient(145deg, #1a1f2e, #0f121c)';
+        container.style.borderRadius = '48px';
+        container.style.padding = '30px';
+        container.style.textAlign = 'center';
+        
+        const title = document.createElement('h1');
+        title.innerText = team.name;
+        title.style.color = team.color;
+        title.style.fontSize = '2rem';
+        title.style.marginBottom = '20px';
+        title.style.textShadow = `0 0 10px ${team.color}`;
+        
+        const questionDisplay = document.createElement('div');
+        questionDisplay.style.background = '#00000040';
+        questionDisplay.style.borderRadius = '24px';
+        questionDisplay.style.padding = '20px';
+        questionDisplay.style.marginBottom = '30px';
+        questionDisplay.style.fontSize = '1.2rem';
+        questionDisplay.style.color = '#ddd';
+        questionDisplay.id = 'phoneQuestion';
+        questionDisplay.innerText = 'Ожидание вопроса...';
+        
+        const answersContainer = document.createElement('div');
+        answersContainer.style.display = 'grid';
+        answersContainer.style.gap = '12px';
+        answersContainer.style.marginBottom = '20px';
+        answersContainer.id = 'phoneAnswers';
+        
+        const statusMsg = document.createElement('div');
+        statusMsg.style.marginTop = '20px';
+        statusMsg.style.padding = '10px';
+        statusMsg.style.borderRadius = '20px';
+        statusMsg.style.fontSize = '0.9rem';
+        statusMsg.id = 'phoneStatus';
+        statusMsg.innerText = '🟢 Готов';
+        
+        container.appendChild(title);
+        container.appendChild(questionDisplay);
+        container.appendChild(answersContainer);
+        container.appendChild(statusMsg);
+        document.body.appendChild(container);
+        
+        let hasAnswered = false;
+        
+        // Слушаем состояние игры
+        function updatePhoneUI() {
+            const btns = ['A', 'B', 'C', 'D'];
+            answersContainer.innerHTML = '';
+            btns.forEach(letter => {
+                const btn = document.createElement('button');
+                btn.innerText = `${letter === 'A' ? '🅰️' : letter === 'B' ? '🅱️' : letter === 'C' ? '🅲️' : '🅳️'} ${letter}`;
+                btn.style.background = '#2a2e45';
+                btn.style.border = 'none';
+                btn.style.color = 'white';
+                btn.style.padding = '20px';
+                btn.style.borderRadius = '30px';
+                btn.style.fontSize = '1.2rem';
+                btn.style.cursor = 'pointer';
+                btn.disabled = hasAnswered;
+                btn.onclick = () => sendAnswer(letter);
+                answersContainer.appendChild(btn);
+            });
+        }
+        
+        async function sendAnswer(answer) {
+            if (hasAnswered) {
+                statusMsg.innerText = '⏳ Вы уже ответили!';
+                return;
+            }
+            
+            // Проверяем, свободна ли игра
+            const stateSnap = await answersRef.once('value');
+            const state = stateSnap.val();
+            if (state && state.locked) {
+                statusMsg.innerText = '❌ Кто-то уже ответил!';
+                return;
+            }
+            
+            hasAnswered = true;
+            statusMsg.innerText = '✅ Ответ отправлен!';
+            
+            answersRef.set({
+                winner: team.id,
+                answer: answer,
+                timestamp: Date.now(),
+                locked: true
+            });
+        }
+        
+        // Слушаем вопрос от ведущего
+        gameStateRef.on('value', (snap) => {
+            const data = snap.val();
+            if (data && data.question) {
+                questionDisplay.innerText = data.question;
+            }
+        });
+        
+        // Слушаем сброс раунда
+        const roundResetRef = database.ref('/quiz_reset');
+        roundResetRef.on('value', (snap) => {
+            if (snap.val() === true) {
+                hasAnswered = false;
+                statusMsg.innerText = '🟢 Новый вопрос!';
+                roundResetRef.set(false);
+            }
+        });
+        
+        updatePhoneUI();
+    } else {
+        // Режим ведущего
+        // Сохраняем вопрос в Firebase для телефонов
+        function syncQuestionToPhones() {
+            gameStateRef.set({
+                question: currentQuestion.text,
+                answers: currentQuestion.answers,
+                correct: currentQuestion.correct
+            });
+        }
+        
+        // При смене вопроса
+        const originalUpdate = updateQuestionDisplay;
+        window.updateQuestionDisplay = function() {
+            originalUpdate();
+            syncQuestionToPhones();
+        };
+        
+        updateQuestionDisplay();
+        syncQuestionToPhones();
+        
+        // Кнопка сброса раунда для телефонов
+        const resetRoundRef = database.ref('/quiz_reset');
+        nextQuestionBtn.addEventListener('click', () => {
+            resetRound();
+            resetRoundRef.set(true);
+            syncQuestionToPhones();
+        });
+        
+        resetAnswersBtn.addEventListener('click', () => {
+            resetRound();
+            resetRoundRef.set(true);
+        });
+    }
+    
+    // ========== ИНИЦИАЛИЗАЦИЯ ==========
+    loadScoresFromFirebase();
+    updateScoreboard();
+    generateQRs();
+    resetRound();
+    
+    // Делаем вопрос редактируемым для ведущего
+    questionTextEl.contentEditable = true;
+    questionTextEl.style.cursor = 'text';
+    questionTextEl.style.border = '1px dashed rgba(255,255,255,0.3)';
+    questionTextEl.style.padding = '10px';
+    questionTextEl.style.borderRadius = '20px';
+    questionTextEl.addEventListener('blur', () => {
+        currentQuestion.text = questionTextEl.innerText;
+        syncQuestionToPhones();
+    });
+    
+    // Редактирование ответов
+    const answerBtns = answersPanel.querySelectorAll('.answer-btn');
+    answerBtns.forEach((btn, idx) => {
+        btn.contentEditable = true;
+        btn.style.cursor = 'text';
+        btn.style.border = '1px dashed rgba(255,255,255,0.3)';
+        btn.addEventListener('blur', () => {
+            currentQuestion.answers[idx] = btn.innerText.replace(/^[А-ЯA-C]\..\s*/, '').trim();
+            syncQuestionToPhones();
+        });
+    });
+    
+    // Выбор правильного ответа
+    answerBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            if (!waitingForAnswer) return;
+            const letter = btn.dataset.answer;
+            currentQuestion.correct = letter;
+            syncQuestionToPhones();
+            statusDisplay.innerHTML = `📌 Правильный ответ установлен: ${letter}`;
+            setTimeout(() => {
+                if (waitingForAnswer) statusDisplay.innerHTML = '🟢 Готов к приёму ответов';
+            }, 2000);
+        });
+    });
+    
+    console.log('🎮 Викторина готова! Ведущий может редактировать вопрос и ответы кликом мыши.');
+</script>
+</body>
+</html>
