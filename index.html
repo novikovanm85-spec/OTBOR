@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Викторина | Создание и редактирование</title>
+    <title>Викторина | Прогресс команд</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -56,12 +56,33 @@
         .btn-warning { background: #ff9800; color: #1a1a2e; }
         .scoreboard { background: #00000030; border-radius: 32px; padding: 20px; margin-bottom: 30px; }
         .scoreboard h2 { margin-bottom: 20px; color: white; }
-        .score-row { display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .score-row { display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
         .team-color { width: 12px; height: 12px; border-radius: 12px; }
         .team-name { width: 100px; font-weight: bold; color: white; }
         .team-score { flex: 1; font-size: 1.5rem; font-weight: bold; color: white; }
         .score-buttons { display: flex; gap: 8px; }
         .score-btn { background: #2a2e45; border: none; color: white; width: 36px; height: 36px; border-radius: 20px; cursor: pointer; font-size: 1.2rem; }
+        
+        /* Прогресс-бар */
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            margin-top: -8px;
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+        .progress-bar.gold {
+            background: linear-gradient(90deg, #ffd700, #ffb347);
+            box-shadow: 0 0 6px #ffd700;
+        }
+        
         .question-text { font-size: 1.8rem; font-weight: 700; margin-bottom: 30px; color: white; }
         .answers { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
         .answer-btn { background: #2a2e45; border: none; color: white; font-size: 1.2rem; padding: 20px; border-radius: 40px; text-align: left; cursor: pointer; }
@@ -75,11 +96,6 @@
         .qr-card canvas { background: white; padding: 10px; border-radius: 16px; width: 120px; height: 120px; margin: 10px auto; }
         .status { background: #1a1f2e; border-radius: 20px; padding: 10px 20px; margin-bottom: 20px; display: inline-block; color: white; }
         .hidden { display: none; }
-        
-        :-webkit-full-screen .container { max-width: 100%; padding: 20px; }
-        :-moz-full-screen .container { max-width: 100%; padding: 20px; }
-        :fullscreen .container { max-width: 100%; padding: 20px; }
-        :fullscreen .fullscreen-btn { position: fixed; top: 20px; right: 20px; }
         
         @media (max-width: 768px) {
             .question-text { font-size: 1.2rem; }
@@ -129,7 +145,7 @@
         <div id="questionsEditor"></div>
         <button class="btn" id="addQuestionBtn">➕ ДОБАВИТЬ ВОПРОС</button>
         <button class="btn btn-primary" id="saveQuizBtn">💾 СОХРАНИТЬ ВИКТОРИНУ</button>
-        <button class="btn btn-warning" id="cancelEditBtn" style="display: none;">❌ ОТМЕНИТЬ РЕДАКТИРОВАНИЕ</button>
+        <button class="btn btn-warning" id="cancelEditBtn" style="display: none;">❌ ОТМЕНИТЬ</button>
     </div>
     
     <div id="editMode" class="panel hidden">
@@ -183,7 +199,7 @@
         else {
             allQuizzes = [{
                 id: Date.now(),
-                name: "Пример викторины",
+                name: "Пример",
                 questions: [
                     { text: "Сколько планет в Солнечной системе?", answers: ["7", "8", "9", "10"], correct: "B" },
                     { text: "Какой язык программирования используется для этого сайта?", answers: ["Python", "Java", "JavaScript", "C++"], correct: "C" }
@@ -205,10 +221,10 @@
             div.innerHTML = `
                 <textarea rows="2" placeholder="Вопрос ${idx+1}" data-index="${idx}" data-field="text">${escapeHtml(q.text)}</textarea>
                 <div class="answers-row">
-                    <input type="text" placeholder="Вариант А" value="${escapeHtml(q.answers[0])}" data-index="${idx}" data-answer="0">
-                    <input type="text" placeholder="Вариант Б" value="${escapeHtml(q.answers[1])}" data-index="${idx}" data-answer="1">
-                    <input type="text" placeholder="Вариант В" value="${escapeHtml(q.answers[2])}" data-index="${idx}" data-answer="2">
-                    <input type="text" placeholder="Вариант Г" value="${escapeHtml(q.answers[3])}" data-index="${idx}" data-answer="3">
+                    <input type="text" placeholder="А" value="${escapeHtml(q.answers[0])}" data-index="${idx}" data-answer="0">
+                    <input type="text" placeholder="Б" value="${escapeHtml(q.answers[1])}" data-index="${idx}" data-answer="1">
+                    <input type="text" placeholder="В" value="${escapeHtml(q.answers[2])}" data-index="${idx}" data-answer="2">
+                    <input type="text" placeholder="Г" value="${escapeHtml(q.answers[3])}" data-index="${idx}" data-answer="3">
                 </div>
                 <div class="correct-select">
                     <span>Правильный ответ:</span>
@@ -271,7 +287,7 @@
     }
     
     document.getElementById('addQuestionBtn').onclick = () => {
-        editingQuestions.push({ text: "Новый вопрос", answers: ["Вариант А", "Вариант Б", "Вариант В", "Вариант Г"], correct: "A" });
+        editingQuestions.push({ text: "Новый вопрос", answers: ["", "", "", ""], correct: "A" });
         renderEditor();
     };
     
@@ -399,20 +415,32 @@
         resetRoundRef.set(true);
     }
     
+    // ========== ОБНОВЛЁННАЯ ТАБЛИЦА ЛИДЕРОВ С ПРОГРЕСС-БАРОМ ==========
     function updateScoreboard() {
         const sorted = [...TEAMS].sort((a, b) => b.score - a.score);
+        const maxScore = Math.max(10, ...TEAMS.map(t => t.score));
+        
         const container = document.getElementById('scoreboardList');
-        container.innerHTML = sorted.map(team => `
-            <div class="score-row">
-                <div class="team-color" style="background: ${team.color}"></div>
-                <div class="team-name">${team.name}</div>
-                <div class="team-score">${team.score} очков</div>
-                <div class="score-buttons">
-                    <button class="score-btn" data-team="${team.id}" data-delta="1">+1</button>
-                    <button class="score-btn" data-team="${team.id}" data-delta="-1">-1</button>
+        container.innerHTML = sorted.map(team => {
+            const percent = Math.min(100, (team.score / maxScore) * 100);
+            const isGold = team.score >= 10;
+            
+            return `
+                <div class="score-row">
+                    <div class="team-color" style="background: ${team.color}; box-shadow: 0 0 8px ${team.color}"></div>
+                    <div class="team-name">${team.name}</div>
+                    <div class="team-score">${team.score} очков</div>
+                    <div class="score-buttons">
+                        <button class="score-btn" data-team="${team.id}" data-delta="1">+1</button>
+                        <button class="score-btn" data-team="${team.id}" data-delta="-1">-1</button>
+                    </div>
                 </div>
-            </div>
-        `).join('');
+                <div class="progress-bar-container">
+                    <div class="progress-bar${isGold ? ' gold' : ''}" style="width: ${percent}%; background: ${isGold ? '#ffd700' : team.color};"></div>
+                </div>
+            `;
+        }).join('');
+        
         document.querySelectorAll('.score-btn').forEach(btn => {
             btn.onclick = (e) => {
                 e.stopPropagation();
