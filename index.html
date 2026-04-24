@@ -141,23 +141,15 @@
 <script>
     // ========== ПОЛНОЭКРАННЫЙ РЕЖИМ ==========
     const fullscreenBtn = document.getElementById('fullscreenBtn');
-    const rootElement = document.documentElement;
-    
-    function toggleFullscreen() {
-        if (!document.fullscreenElement) {
-            rootElement.requestFullscreen().catch(err => console.warn(err));
-            fullscreenBtn.textContent = '✖ Выйти';
-        } else {
-            document.exitFullscreen();
-            fullscreenBtn.textContent = '⛶ На весь экран';
-        }
-    }
-    fullscreenBtn.addEventListener('click', toggleFullscreen);
+    fullscreenBtn.addEventListener('click', () => {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+        else document.exitFullscreen();
+    });
     document.addEventListener('fullscreenchange', () => {
         fullscreenBtn.textContent = document.fullscreenElement ? '✖ Выйти' : '⛶ На весь экран';
     });
     
-    // ========== ОСТАЛЬНОЙ КОД ==========
+    // ========== КОМАНДЫ ==========
     const TEAMS = [
         { id: 'team1', name: '🔴 КОМАНДА 1', color: '#ff4444', score: 0 },
         { id: 'team2', name: '🔵 КОМАНДА 2', color: '#4488ff', score: 0 },
@@ -176,6 +168,7 @@
     let waitingForAnswer = true;
     let currentLocked = false;
     
+    // Firebase
     const firebaseConfig = { databaseURL: "https://knopka-e92fb-default-rtdb.firebaseio.com/" };
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
@@ -210,12 +203,12 @@
             const div = document.createElement('div');
             div.className = 'question-row';
             div.innerHTML = `
-                <input type="text" placeholder="Вопрос ${idx+1}" value="${escapeHtml(q.text)}" data-index="${idx}" data-field="text">
+                <textarea rows="2" placeholder="Вопрос ${idx+1}" data-index="${idx}" data-field="text">${escapeHtml(q.text)}</textarea>
                 <div class="answers-row">
-                    <input type="text" placeholder="А" value="${escapeHtml(q.answers[0])}" data-index="${idx}" data-answer="0">
-                    <input type="text" placeholder="Б" value="${escapeHtml(q.answers[1])}" data-index="${idx}" data-answer="1">
-                    <input type="text" placeholder="В" value="${escapeHtml(q.answers[2])}" data-index="${idx}" data-answer="2">
-                    <input type="text" placeholder="Г" value="${escapeHtml(q.answers[3])}" data-index="${idx}" data-answer="3">
+                    <input type="text" placeholder="Вариант А" value="${escapeHtml(q.answers[0])}" data-index="${idx}" data-answer="0">
+                    <input type="text" placeholder="Вариант Б" value="${escapeHtml(q.answers[1])}" data-index="${idx}" data-answer="1">
+                    <input type="text" placeholder="Вариант В" value="${escapeHtml(q.answers[2])}" data-index="${idx}" data-answer="2">
+                    <input type="text" placeholder="Вариант Г" value="${escapeHtml(q.answers[3])}" data-index="${idx}" data-answer="3">
                 </div>
                 <div class="correct-select">
                     <span>Правильный ответ:</span>
@@ -224,11 +217,12 @@
                     <label><input type="radio" name="correct_${idx}" value="C" ${q.correct === 'C' ? 'checked' : ''}> В</label>
                     <label><input type="radio" name="correct_${idx}" value="D" ${q.correct === 'D' ? 'checked' : ''}> Г</label>
                 </div>
-                <button class="remove-question" data-index="${idx}">🗑️ Удалить</button>
+                <button class="remove-question" data-index="${idx}">🗑️ Удалить вопрос</button>
             `;
             container.appendChild(div);
         });
-        document.querySelectorAll('#questionsEditor input[type="text"]').forEach(inp => {
+        
+        document.querySelectorAll('#questionsEditor textarea, #questionsEditor input[type="text"]').forEach(inp => {
             inp.addEventListener('change', (e) => {
                 const idx = parseInt(inp.dataset.index);
                 if (inp.dataset.field === 'text') editingQuestions[idx].text = inp.value;
@@ -237,12 +231,16 @@
         });
         document.querySelectorAll('#questionsEditor input[type="radio"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
-                const idx = parseInt(radio.name.split('_')[1]);
+                const name = radio.name;
+                const idx = parseInt(name.split('_')[1]);
                 editingQuestions[idx].correct = radio.value;
             });
         });
         document.querySelectorAll('.remove-question').forEach(btn => {
-            btn.addEventListener('click', () => { editingQuestions.splice(parseInt(btn.dataset.index), 1); renderEditor(); });
+            btn.addEventListener('click', () => {
+                editingQuestions.splice(parseInt(btn.dataset.index), 1);
+                renderEditor();
+            });
         });
     }
     
@@ -279,8 +277,9 @@
     
     document.getElementById('saveQuizBtn').onclick = () => {
         const name = document.getElementById('quizName').value.trim();
-        if (!name) { alert('Введите название'); return; }
-        if (editingQuestions.length === 0) { alert('Добавьте вопросы'); return; }
+        if (!name) { alert('Введите название викторины'); return; }
+        if (editingQuestions.length === 0) { alert('Добавьте хотя бы один вопрос'); return; }
+        
         if (editingQuizId) {
             const idx = allQuizzes.findIndex(q => q.id === editingQuizId);
             if (idx !== -1) {
@@ -295,9 +294,6 @@
         startNewQuiz();
         displaySavedQuizzes();
         displayQuizList();
-        if (currentQuiz && currentQuiz.id === editingQuizId) {
-            currentQuiz = JSON.parse(JSON.stringify(allQuizzes.find(q => q.id === editingQuizId)));
-        }
     };
     
     document.getElementById('cancelEditBtn').onclick = startNewQuiz;
@@ -460,7 +456,8 @@
                 if (btn.dataset.answer === currentQuestion.correct) btn.classList.add('correct');
             });
         } else {
-            document.getElementById('statusDisplay').innerHTML = `❌ ${team.name} ответил НЕПРАВИЛЬНО! Правильно: ${currentQuestion.correct}. ${currentQuestion.answers[['A','B','C','D'].indexOf(currentQuestion.correct)]}`;
+            const correctAnswerText = currentQuestion.answers[['A','B','C','D'].indexOf(currentQuestion.correct)];
+            document.getElementById('statusDisplay').innerHTML = `❌ ${team.name} ответил НЕПРАВИЛЬНО! Правильный ответ: ${currentQuestion.correct}. ${correctAnswerText}`;
             document.getElementById('statusDisplay').style.background = '#b71c1c';
             document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => {
                 if (btn.dataset.answer === currentQuestion.correct) btn.classList.add('correct');
