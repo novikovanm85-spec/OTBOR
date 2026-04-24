@@ -12,7 +12,6 @@
         body { font-family: 'Segoe UI', system-ui; background: #0a0c15; min-height: 100vh; padding: 20px; }
         .container { max-width: 1400px; margin: 0 auto; position: relative; }
         
-        /* Кнопка на весь экран */
         .fullscreen-btn {
             position: fixed;
             top: 20px;
@@ -77,7 +76,6 @@
         .status { background: #1a1f2e; border-radius: 20px; padding: 10px 20px; margin-bottom: 20px; display: inline-block; color: white; }
         .hidden { display: none; }
         
-        /* Полноэкранный режим */
         :-webkit-full-screen .container { max-width: 100%; padding: 20px; }
         :-moz-full-screen .container { max-width: 100%; padding: 20px; }
         :fullscreen .container { max-width: 100%; padding: 20px; }
@@ -93,7 +91,6 @@
 </head>
 <body>
 <div class="container" id="app">
-    <!-- Кнопка на весь экран -->
     <button class="fullscreen-btn" id="fullscreenBtn">⛶ На весь экран</button>
     
     <div class="mode-selector">
@@ -106,10 +103,10 @@
         <div class="status" id="statusDisplay">🟢 Готов к приёму ответов</div>
         <div class="question-text" id="questionText">Выберите викторину из списка</div>
         <div class="answers" id="answersPanel">
-            <button class="answer-btn" data-answer="A">🅰️ А.</button>
-            <button class="answer-btn" data-answer="B">🅱️ Б.</button>
-            <button class="answer-btn" data-answer="C">🅲️ В.</button>
-            <button class="answer-btn" data-answer="D">🅳️ Г.</button>
+            <button class="answer-btn" data-answer="A"></button>
+            <button class="answer-btn" data-answer="B"></button>
+            <button class="answer-btn" data-answer="C"></button>
+            <button class="answer-btn" data-answer="D"></button>
         </div>
         <div class="question-list" id="quizSelectList"></div>
         <div class="question-list" id="questionList"></div>
@@ -391,9 +388,11 @@
         currentLocked = false;
         document.getElementById('questionText').innerHTML = currentQuestion.text;
         const btns = document.querySelectorAll('#answersPanel .answer-btn');
+        const letters = ['A', 'B', 'C', 'D'];
+        const emoji = { A: '🅰️', B: '🅱️', C: '🅲️', D: '🅳️' };
         btns.forEach((btn, idx) => {
-            const letter = ['A', 'B', 'C', 'D'][idx];
-            btn.innerHTML = `${letter === 'A' ? '🅰️' : letter === 'B' ? '🅱️' : letter === 'C' ? '🅲️' : '🅳️'} ${letter}. ${currentQuestion.answers[idx]}`;
+            const letter = letters[idx];
+            btn.innerHTML = `${emoji[letter]} ${letter}. ${currentQuestion.answers[idx]}`;
             btn.classList.remove('correct', 'wrong');
         });
         displayQuestionNumbers();
@@ -574,10 +573,12 @@
             if (data && data.question) {
                 questionDisplay.innerText = data.question;
                 answersContainer.innerHTML = '';
-                ['A', 'B', 'C', 'D'].forEach(letter => {
-                    const answerText = data.answers ? data.answers[['A','B','C','D'].indexOf(letter)] : letter;
+                const letters = ['A', 'B', 'C', 'D'];
+                const emoji = { A: '🅰️', B: '🅱️', C: '🅲️', D: '🅳️' };
+                letters.forEach(letter => {
+                    const answerText = data.answers ? data.answers[letters.indexOf(letter)] : letter;
                     const btn = document.createElement('button');
-                    btn.innerText = `${letter === 'A' ? '🅰️' : letter === 'B' ? '🅱️' : letter === 'C' ? '🅲️' : '🅳️'} ${letter}. ${answerText}`;
+                    btn.innerText = `${emoji[letter]} ${letter}. ${answerText}`;
                     btn.style.background = '#2a2e45';
                     btn.style.border = 'none';
                     btn.style.color = 'white';
