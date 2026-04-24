@@ -21,8 +21,9 @@
         .quiz-card h3 { color: white; margin-bottom: 8px; }
         .quiz-card p { color: #aaa; font-size: 0.8rem; }
         .quiz-actions { display: flex; gap: 10px; margin-top: 15px; }
-        .edit-quiz-btn { background: #ff9800; border: none; color: #1a1a2e; padding: 6px 12px; border-radius: 20px; cursor: pointer; }
-        .delete-quiz-btn { background: #b71c1c; border: none; color: white; padding: 6px 12px; border-radius: 20px; cursor: pointer; }
+        .edit-quiz-btn { background: #ff9800; border: none; color: #1a1a2e; padding: 8px 16px; border-radius: 25px; cursor: pointer; font-size: 0.9rem; }
+        .delete-quiz-btn { background: #b71c1c; border: none; color: white; padding: 8px 16px; border-radius: 25px; cursor: pointer; font-size: 0.9rem; }
+        .edit-quiz-btn:hover, .delete-quiz-btn:hover { opacity: 0.8; transform: scale(1.02); }
         .question-editor { background: #00000030; border-radius: 32px; padding: 20px; margin-bottom: 20px; max-height: 500px; overflow-y: auto; }
         .question-row { margin-bottom: 20px; padding: 15px; background: #1a1f2e; border-radius: 24px; }
         .question-row input, .question-row textarea { width: 100%; padding: 12px; margin-bottom: 10px; background: #2a2e45; border: none; border-radius: 20px; color: white; font-family: inherit; }
@@ -216,6 +217,7 @@
         document.getElementById('cancelEditBtn').style.display = 'inline-block';
         editingQuestions = JSON.parse(JSON.stringify(quiz.questions));
         renderEditor();
+        // Переключаемся на режим создания
         document.querySelector('[data-mode="create"]').click();
     }
     
@@ -246,7 +248,10 @@
     function displaySavedQuizzes() {
         const container = document.getElementById('savedQuizzesList');
         container.innerHTML = '';
-        if (allQuizzes.length === 0) { container.innerHTML = '<div style="color: #aaa;">Нет викторин. Создайте новую.</div>'; return; }
+        if (allQuizzes.length === 0) { 
+            container.innerHTML = '<div style="color: #aaa;">Нет викторин. Создайте новую.</div>'; 
+            return; 
+        }
         allQuizzes.forEach(quiz => {
             const card = document.createElement('div');
             card.className = 'quiz-card';
@@ -260,18 +265,37 @@
             `;
             container.appendChild(card);
         });
+        // Добавляем обработчики ПОСЛЕ создания карточек
         document.querySelectorAll('.edit-quiz-btn').forEach(btn => {
-            btn.onclick = () => { const q = allQuizzes.find(x => x.id === parseInt(btn.dataset.id)); if (q) editQuiz(q); };
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = parseInt(btn.getAttribute('data-id'));
+                const quiz = allQuizzes.find(q => q.id === id);
+                if (quiz) editQuiz(quiz);
+            });
         });
         document.querySelectorAll('.delete-quiz-btn').forEach(btn => {
-            btn.onclick = () => { if (confirm('Удалить?')) { allQuizzes = allQuizzes.filter(x => x.id !== parseInt(btn.dataset.id)); saveQuizzes(); displaySavedQuizzes(); displayQuizList(); } };
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = parseInt(btn.getAttribute('data-id'));
+                if (confirm('Удалить викторину?')) {
+                    allQuizzes = allQuizzes.filter(q => q.id !== id);
+                    saveQuizzes();
+                    displaySavedQuizzes();
+                    displayQuizList();
+                    if (currentQuiz && currentQuiz.id === id) currentQuiz = null;
+                }
+            });
         });
     }
     
     function displayQuizList() {
         const container = document.getElementById('quizSelectList');
         container.innerHTML = '';
-        if (allQuizzes.length === 0) { container.innerHTML = '<div style="color: #aaa;">Нет викторин. Создайте новую.</div>'; return; }
+        if (allQuizzes.length === 0) { 
+            container.innerHTML = '<div style="color: #aaa;">Нет викторин. Создайте новую.</div>'; 
+            return; 
+        }
         allQuizzes.forEach(quiz => {
             const btn = document.createElement('button');
             btn.className = 'q-btn';
@@ -389,7 +413,7 @@
     });
     
     document.getElementById('nextQuestionBtn').onclick = () => {
-        if (!currentQuiz) { alert('Сначала выберите викторину'); return; }
+        if (!currentQuiz) { alert('Сначала выберите викторину из списка'); return; }
         if (currentQuestionIndex + 1 < currentQuiz.questions.length) loadQuestion(currentQuestionIndex + 1);
         else alert('🎉 Последний вопрос! Выберите другую викторину.');
     };
@@ -418,6 +442,7 @@
         });
     }
     
+    // Переключение режимов
     document.querySelectorAll('.mode-btn').forEach(btn => {
         btn.onclick = () => {
             document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
@@ -425,12 +450,22 @@
             document.getElementById('playMode').classList.add('hidden');
             document.getElementById('createMode').classList.add('hidden');
             document.getElementById('editMode').classList.add('hidden');
-            if (btn.dataset.mode === 'play') { document.getElementById('playMode').classList.remove('hidden'); displayQuizList(); }
-            if (btn.dataset.mode === 'create') { document.getElementById('createMode').classList.remove('hidden'); startNewQuiz(); }
-            if (btn.dataset.mode === 'edit') { document.getElementById('editMode').classList.remove('hidden'); displaySavedQuizzes(); }
+            if (btn.dataset.mode === 'play') { 
+                document.getElementById('playMode').classList.remove('hidden'); 
+                displayQuizList(); 
+            }
+            if (btn.dataset.mode === 'create') { 
+                document.getElementById('createMode').classList.remove('hidden'); 
+                startNewQuiz(); 
+            }
+            if (btn.dataset.mode === 'edit') { 
+                document.getElementById('editMode').classList.remove('hidden'); 
+                displaySavedQuizzes(); 
+            }
         };
     });
     
+    // Телефонный режим
     const teamParam = new URLSearchParams(window.location.search).get('team');
     if (teamParam && TEAMS.some(t => t.id === teamParam)) {
         const team = TEAMS.find(t => t.id === teamParam);
