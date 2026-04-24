@@ -23,7 +23,7 @@
         .quiz-actions { display: flex; gap: 10px; margin-top: 15px; }
         .edit-quiz-btn { background: #ff9800; border: none; color: #1a1a2e; padding: 8px 16px; border-radius: 25px; cursor: pointer; font-size: 0.9rem; }
         .delete-quiz-btn { background: #b71c1c; border: none; color: white; padding: 8px 16px; border-radius: 25px; cursor: pointer; font-size: 0.9rem; }
-        .edit-quiz-btn:hover, .delete-quiz-btn:hover { opacity: 0.8; transform: scale(1.02); }
+        .edit-quiz-btn:hover, .delete-quiz-btn:hover { opacity: 0.8; }
         .question-editor { background: #00000030; border-radius: 32px; padding: 20px; margin-bottom: 20px; max-height: 500px; overflow-y: auto; }
         .question-row { margin-bottom: 20px; padding: 15px; background: #1a1f2e; border-radius: 24px; }
         .question-row input, .question-row textarea { width: 100%; padding: 12px; margin-bottom: 10px; background: #2a2e45; border: none; border-radius: 20px; color: white; font-family: inherit; }
@@ -101,7 +101,7 @@
         <div id="questionsEditor"></div>
         <button class="btn" id="addQuestionBtn">➕ ДОБАВИТЬ ВОПРОС</button>
         <button class="btn btn-primary" id="saveQuizBtn">💾 СОХРАНИТЬ ВИКТОРИНУ</button>
-        <button class="btn btn-warning" id="cancelEditBtn" style="display: none;">❌ ОТМЕНИТЬ</button>
+        <button class="btn btn-warning" id="cancelEditBtn" style="display: none;">❌ ОТМЕНИТЬ РЕДАКТИРОВАНИЕ</button>
     </div>
     
     <div id="editMode" class="panel hidden">
@@ -210,15 +210,21 @@
     }
     
     function editQuiz(quiz) {
+        // Загружаем данные викторины в редактор
         editingQuizId = quiz.id;
         document.getElementById('editQuizId').value = quiz.id;
         document.getElementById('quizName').value = quiz.name;
-        document.getElementById('editorTitle').innerText = '✏️ РЕДАКТИРОВАНИЕ: ' + quiz.name;
+        document.getElementById('editorTitle').innerHTML = '✏️ РЕДАКТИРОВАНИЕ: ' + escapeHtml(quiz.name);
         document.getElementById('cancelEditBtn').style.display = 'inline-block';
         editingQuestions = JSON.parse(JSON.stringify(quiz.questions));
         renderEditor();
-        // Переключаемся на режим создания
-        document.querySelector('[data-mode="create"]').click();
+        
+        // Переключаемся на вкладку СОЗДАТЬ ВИКТОРИНУ
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector('[data-mode="create"]').classList.add('active');
+        document.getElementById('playMode').classList.add('hidden');
+        document.getElementById('createMode').classList.remove('hidden');
+        document.getElementById('editMode').classList.add('hidden');
     }
     
     document.getElementById('addQuestionBtn').onclick = () => {
@@ -231,16 +237,25 @@
         if (!name) { alert('Введите название'); return; }
         if (editingQuestions.length === 0) { alert('Добавьте вопросы'); return; }
         if (editingQuizId) {
+            // Обновляем существующую викторину
             const idx = allQuizzes.findIndex(q => q.id === editingQuizId);
-            if (idx !== -1) allQuizzes[idx] = { id: editingQuizId, name: name, questions: editingQuestions.map(q => ({...q})) };
+            if (idx !== -1) {
+                allQuizzes[idx] = { id: editingQuizId, name: name, questions: editingQuestions.map(q => ({...q})) };
+                alert(`Викторина "${name}" обновлена!`);
+            }
         } else {
+            // Создаём новую викторину
             allQuizzes.push({ id: Date.now(), name: name, questions: editingQuestions.map(q => ({...q})) });
+            alert(`Викторина "${name}" сохранена!`);
         }
         saveQuizzes();
-        alert(`Викторина "${name}" сохранена!`);
         startNewQuiz();
         displaySavedQuizzes();
         displayQuizList();
+        // Если в режиме редактирования была открыта эта викторина в игре, обновляем
+        if (currentQuiz && currentQuiz.id === editingQuizId) {
+            currentQuiz = JSON.parse(JSON.stringify(allQuizzes.find(q => q.id === editingQuizId)));
+        }
     };
     
     document.getElementById('cancelEditBtn').onclick = startNewQuiz;
