@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Викторина | Автоматическое начисление очков</title>
+    <title>Викторина | Автоматическое начисление очков (исправлено)</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -123,6 +123,7 @@
     let allQuizzes = [], editingQuizId = null, editingQuestions = [], currentQuiz = null, currentQuestionIndex = 0, currentQuestion = null;
     let waitingForAnswer = true, currentLocked = false;
     let timerInterval = null, timeLeft = 60, timerExpired = false;
+    let roundProcessed = false; // Флаг, чтобы не начислять очки дважды за один раунд
     
     const firebaseConfig = { databaseURL: "https://knopka-e92fb-default-rtdb.firebaseio.com/" };
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
@@ -130,6 +131,7 @@
     const answersRef = database.ref('/quiz_answers');
     const teamsScoreRef = database.ref('/quiz_scores');
     const gameStateRef = database.ref('/quiz_state');
+    const resetRoundRef = database.ref('/quiz_reset');
     
     function loadQuizzes() {
         const saved = localStorage.getItem('quizzes');
@@ -240,7 +242,11 @@
         if(allQuizzes.length===0) { container.innerHTML='<div style="color:#aaa;">Нет викторин. Создайте новую.</div>'; return; }
         allQuizzes.forEach(quiz => {
             const btn = document.createElement('button'); btn.className='q-btn'; btn.textContent=quiz.name;
-            btn.onclick = () => { currentQuiz = JSON.parse(JSON.stringify(quiz)); currentQuestionIndex=0; loadQuestion(0); };
+            btn.onclick = () => { 
+                currentQuiz = JSON.parse(JSON.stringify(quiz)); 
+                currentQuestionIndex = 0; 
+                loadQuestion(0); 
+            };
             container.appendChild(btn);
         });
     }
@@ -264,6 +270,7 @@
         currentQuestion = { ...currentQuiz.questions[index] };
         waitingForAnswer = true;
         currentLocked = false;
+        roundProcessed = false; // Сбрасываем флаг обработки раунда
         
         document.getElementById('questionText').innerHTML = currentQuestion.text;
         const btns = document.querySelectorAll('#answersPanel .answer-btn');
@@ -284,16 +291,17 @@
             question: currentQuestion.text, 
             answers: currentQuestion.answers, 
             correct: currentQuestion.correct,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            questionId: Date.now() + index
         });
         
         answersRef.set({ locked: false, winner: null, answer: null, expired: false });
+        resetRoundRef.set(true);
         
         document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
         document.getElementById('statusDisplay').style.background = '#1a1f2e';
     }
     
-    // ========== ОБНОВЛЁННАЯ ТАБЛИЦА ЛИДЕРОВ (БЕЗ КНОПОК +1/-1) ==========
     function updateScoreboard() {
         const sorted = [...TEAMS].sort((a,b)=>b.score-a.score);
         const maxScore = Math.max(10, ...TEAMS.map(t=>t.score));
@@ -314,29 +322,29 @@
         }).join('');
     }
     
-    // Сохранение очков в Firebase
     function saveScoresToFirebase() {
         const scores = {};
         TEAMS.forEach(team => { scores[team.id] = team.score; });
         teamsScoreRef.set(scores);
     }
     
-    // Автоматическое начисление очков при правильном ответе
+    // Обработка ответов (ТОЛЬКО ОДИН РАЗ ЗА РАУНД)
     answersRef.on('value', (snapshot) => {
         const data = snapshot.val();
         if(!data || !data.winner || !data.answer) return;
         if(!waitingForAnswer || currentLocked || !currentQuestion) return;
         if(timerExpired) return;
+        if(roundProcessed) return; // УЖЕ ОБРАБОТАЛИ - НЕ НАЧИСЛЯЕМ ПОВТОРНО
         
         const team = TEAMS.find(t=>t.id===data.winner);
         if(!team) return;
         
+        roundProcessed = true; // БЛОКИРУЕМ ПОВТОРНУЮ ОБРАБОТКУ
         currentLocked = true;
         stopTimer();
         
         const isCorrect = (data.answer === currentQuestion.correct);
         if(isCorrect) {
-            // АВТОМАТИЧЕСКИ НАЧИСЛЯЕМ ОЧКО
             team.score++;
             updateScoreboard();
             saveScoresToFirebase();
@@ -356,30 +364,38 @@
             });
         }
         waitingForAnswer = false;
+        
+        // Дополнительная блокировка в Firebase, чтобы другие телефоны не могли отправить ответ
+        answersRef.set({ locked: true, winner: data.winner, answer: data.answer, processed: true });
     });
     
-    // Кнопка сброса очков (оставлена для ведущего)
+    document.getElementById('nextQuestionBtn').onclick = () => {
+        if(!currentQuiz) { alert('Сначала выберите викторину'); return; }
+        if(currentQuestionIndex+1 < currentQuiz.questions.length) {
+            loadQuestion(currentQuestionIndex+1);
+        } else {
+            alert('🎉 Последний вопрос! Выберите другую викторину.');
+        }
+    };
+    
+    document.getElementById('resetAnswersBtn').onclick = () => {
+        waitingForAnswer = true;
+        currentLocked = false;
+        roundProcessed = false;
+        if(timerExpired) { resetTimer(); startTimer(); }
+        document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
+        document.getElementById('statusDisplay').style.background = '#1a1f2e';
+        document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => { btn.classList.remove('correct','wrong'); btn.disabled=false; btn.style.opacity='1'; });
+        answersRef.set({ locked: false, winner: null, answer: null, expired: false });
+        resetRoundRef.set(true);
+    };
+    
     document.getElementById('resetScoresBtn').onclick = () => {
         if(confirm('Сбросить очки всех команд?')) {
             TEAMS.forEach(t=>t.score=0);
             updateScoreboard();
             saveScoresToFirebase();
         }
-    };
-    
-    document.getElementById('nextQuestionBtn').onclick = () => {
-        if(!currentQuiz) { alert('Сначала выберите викторину'); return; }
-        if(currentQuestionIndex+1 < currentQuiz.questions.length) loadQuestion(currentQuestionIndex+1);
-        else alert('🎉 Последний вопрос! Выберите другую викторину.');
-    };
-    document.getElementById('resetAnswersBtn').onclick = () => {
-        waitingForAnswer = true;
-        currentLocked = false;
-        if(timerExpired) { resetTimer(); startTimer(); }
-        document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
-        document.getElementById('statusDisplay').style.background = '#1a1f2e';
-        document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => { btn.classList.remove('correct','wrong'); btn.disabled=false; btn.style.opacity='1'; });
-        answersRef.set({ locked: false, winner: null, answer: null, expired: false });
     };
     
     function generateQRs() {
@@ -500,15 +516,19 @@
             }
         });
         
-        answersRef.on('value', (snap) => {
-            const data = snap.val();
-            if (data && !data.locked && !data.winner) {
+        resetRoundRef.on('value', (snap) => {
+            if(snap.val() === true) {
                 canAnswer = true;
-                statusMsg.innerText = '🟢 Готов к ответу';
+                statusMsg.innerText = '🟢 Новый вопрос!';
                 statusMsg.style.color = '#88ff88';
                 const btns = answersContainer.querySelectorAll('button');
                 btns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
-            } else if (data && data.locked && data.winner === team.id) {
+            }
+        });
+        
+        answersRef.on('value', (snap) => {
+            const data = snap.val();
+            if (data && data.locked && data.winner === team.id) {
                 statusMsg.innerText = '✅ Ответ принят!';
                 statusMsg.style.color = '#88ff88';
                 const btns = answersContainer.querySelectorAll('button');
@@ -523,6 +543,10 @@
                 statusMsg.style.color = '#ff8888';
                 const btns = answersContainer.querySelectorAll('button');
                 btns.forEach(btn => { btn.disabled = true; });
+            } else if (data && !data.locked && !data.winner && !data.expired) {
+                canAnswer = true;
+                const btns = answersContainer.querySelectorAll('button');
+                btns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
             }
         });
         
