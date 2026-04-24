@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Викторина | Прогресс команд</title>
+    <title>Викторина | Таймер 60 секунд</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -35,6 +35,35 @@
         .mode-btn.active { background: #2e7d32; }
         .panel { background: linear-gradient(145deg, #1a1f2e, #0f121c); border-radius: 48px; padding: 30px; margin-bottom: 30px; border: 1px solid rgba(255,255,255,0.1); }
         .panel-title { font-size: 1.5rem; font-weight: bold; margin-bottom: 20px; color: white; }
+        
+        /* Таймер */
+        .timer-panel {
+            background: #00000040;
+            border-radius: 60px;
+            padding: 15px 25px;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .timer-display {
+            font-size: 2.5rem;
+            font-weight: 800;
+            font-family: monospace;
+            background: #00000050;
+            padding: 8px 25px;
+            border-radius: 50px;
+            color: #0f0;
+            text-shadow: 0 0 8px #0f0;
+        }
+        .timer-status {
+            font-size: 1rem;
+            color: #aaa;
+        }
+        
         .quiz-list { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; }
         .quiz-card { background: #2a2e45; border-radius: 24px; padding: 20px; flex: 1; min-width: 200px; }
         .quiz-card h3 { color: white; margin-bottom: 8px; }
@@ -87,6 +116,7 @@
         .answer-btn { background: #2a2e45; border: none; color: white; font-size: 1.2rem; padding: 20px; border-radius: 40px; text-align: left; cursor: pointer; }
         .answer-btn.correct { background: #2e7d32; box-shadow: 0 0 15px #2e7d32; }
         .answer-btn.wrong { background: #b71c1c; }
+        .answer-btn.disabled { opacity: 0.5; cursor: not-allowed; }
         .question-list { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0; }
         .q-btn { background: #2a2e45; border: none; color: white; padding: 10px 20px; border-radius: 30px; cursor: pointer; }
         .q-btn.active { background: #2e7d32; }
@@ -95,12 +125,14 @@
         .qr-card canvas { background: white; padding: 10px; border-radius: 16px; width: 120px; height: 120px; margin: 10px auto; }
         .status { background: #1a1f2e; border-radius: 20px; padding: 10px 20px; margin-bottom: 20px; display: inline-block; color: white; }
         .hidden { display: none; }
+        .timer-expired { color: #ff6666 !important; text-shadow: 0 0 8px #ff0000 !important; }
         
         @media (max-width: 768px) {
             .question-text { font-size: 1.2rem; }
             .answer-btn { font-size: 1rem; padding: 15px; }
             .team-name { width: 70px; font-size: 0.8rem; }
             .fullscreen-btn { padding: 6px 12px; font-size: 0.9rem; top: 10px; right: 10px; }
+            .timer-display { font-size: 1.8rem; padding: 5px 15px; }
         }
     </style>
 </head>
@@ -115,6 +147,10 @@
     </div>
     
     <div id="playMode" class="panel">
+        <div class="timer-panel">
+            <div class="timer-display" id="timerDisplay">01:00</div>
+            <div class="timer-status" id="timerStatus">⏱️ Время на ответ</div>
+        </div>
         <div class="status" id="statusDisplay">🟢 Готов к приёму ответов</div>
         <div class="question-text" id="questionText">Выберите викторину из списка</div>
         <div class="answers" id="answersPanel">
@@ -183,6 +219,12 @@
     let waitingForAnswer = true;
     let currentLocked = false;
     
+    // ========== ТАЙМЕР ==========
+    let timerInterval = null;
+    let timeLeft = 60;
+    let isTimerRunning = false;
+    let timerExpired = false;
+    
     // Firebase
     const firebaseConfig = { databaseURL: "https://knopka-e92fb-default-rtdb.firebaseio.com/" };
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
@@ -210,6 +252,72 @@
     function saveQuizzes() { localStorage.setItem('quizzes', JSON.stringify(allQuizzes)); }
     
     function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m) { return {'&':'&amp;','<':'&lt;','>':'&gt;'}[m]; }); }
+    
+    // ========== ФУНКЦИИ ТАЙМЕРА ==========
+    function updateTimerDisplay() {
+        const mins = Math.floor(timeLeft / 60);
+        const secs = timeLeft % 60;
+        const timerDisplay = document.getElementById('timerDisplay');
+        timerDisplay.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        if (timeLeft <= 0) {
+            timerDisplay.classList.add('timer-expired');
+        } else {
+            timerDisplay.classList.remove('timer-expired');
+        }
+    }
+    
+    function stopTimer() {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        isTimerRunning = false;
+    }
+    
+    function startTimer() {
+        stopTimer();
+        timerExpired = false;
+        timeLeft = 60;
+        updateTimerDisplay();
+        isTimerRunning = true;
+        
+        timerInterval = setInterval(() => {
+            if (isTimerRunning && timeLeft > 0) {
+                timeLeft--;
+                updateTimerDisplay();
+                
+                if (timeLeft <= 0) {
+                    stopTimer();
+                    timerExpired = true;
+                    document.getElementById('timerStatus').innerHTML = '⏰ ВРЕМЯ ВЫШЛО!';
+                    document.getElementById('timerStatus').style.color = '#ff6666';
+                    // Блокируем кнопки ответов на экране ведущего
+                    document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => {
+                        btn.disabled = true;
+                        btn.style.opacity = '0.5';
+                    });
+                    // Отправляем сигнал, что время вышло
+                    answersRef.set({ locked: true, expired: true, winner: null, answer: null });
+                    document.getElementById('statusDisplay').innerHTML = '⏰ Время вышло! Никто не ответил.';
+                    document.getElementById('statusDisplay').style.background = '#b71c1c';
+                }
+            }
+        }, 1000);
+    }
+    
+    function resetTimer() {
+        stopTimer();
+        timeLeft = 60;
+        timerExpired = false;
+        updateTimerDisplay();
+        document.getElementById('timerStatus').innerHTML = '⏱️ Время на ответ';
+        document.getElementById('timerStatus').style.color = '#aaa';
+        // Разблокируем кнопки
+        document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        });
+    }
     
     function renderEditor() {
         const container = document.getElementById('questionsEditor');
@@ -397,6 +505,7 @@
         currentQuestion = { ...currentQuiz.questions[index] };
         waitingForAnswer = true;
         currentLocked = false;
+        
         document.getElementById('questionText').innerHTML = currentQuestion.text;
         const btns = document.querySelectorAll('#answersPanel .answer-btn');
         const letters = ['A', 'B', 'C', 'D'];
@@ -404,20 +513,27 @@
             const letter = letters[idx];
             btn.innerHTML = `${letter}. ${currentQuestion.answers[idx]}`;
             btn.classList.remove('correct', 'wrong');
+            btn.disabled = false;
+            btn.style.opacity = '1';
         });
         displayQuestionNumbers();
+        
+        // Запускаем таймер
+        resetTimer();
+        startTimer();
         
         gameStateRef.set({ 
             question: currentQuestion.text, 
             answers: currentQuestion.answers, 
             correct: currentQuestion.correct,
             questionId: Date.now() + index,
-            active: true
+            active: true,
+            timeLeft: 60
         });
         
         document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
         document.getElementById('statusDisplay').style.background = '#1a1f2e';
-        answersRef.set({ locked: false, winner: null, answer: null });
+        answersRef.set({ locked: false, winner: null, answer: null, expired: false });
         resetRoundRef.set(true);
     }
     
@@ -463,10 +579,18 @@
     function resetRound() {
         waitingForAnswer = true;
         currentLocked = false;
+        if (timerExpired) {
+            resetTimer();
+            startTimer();
+        }
         document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
         document.getElementById('statusDisplay').style.background = '#1a1f2e';
-        document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => btn.classList.remove('correct', 'wrong'));
-        answersRef.set({ locked: false, winner: null, answer: null });
+        document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => {
+            btn.classList.remove('correct', 'wrong');
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        });
+        answersRef.set({ locked: false, winner: null, answer: null, expired: false });
         resetRoundRef.set(true);
     }
     
@@ -474,9 +598,14 @@
         const data = snapshot.val();
         if (!data || !data.winner || !data.answer) return;
         if (!waitingForAnswer || currentLocked || !currentQuestion) return;
+        if (timerExpired) return;
+        
         const team = TEAMS.find(t => t.id === data.winner);
         if (!team) return;
+        
         currentLocked = true;
+        stopTimer();
+        
         const isCorrect = (data.answer === currentQuestion.correct);
         if (isCorrect) {
             team.score++;
@@ -581,6 +710,18 @@
         title.style.fontSize = '2rem';
         title.style.marginBottom = '20px';
         
+        const timerDisplayPhone = document.createElement('div');
+        timerDisplayPhone.style.background = '#00000040';
+        timerDisplayPhone.style.borderRadius = '40px';
+        timerDisplayPhone.style.padding = '10px';
+        timerDisplayPhone.style.marginBottom = '20px';
+        timerDisplayPhone.style.fontSize = '1.5rem';
+        timerDisplayPhone.style.fontWeight = 'bold';
+        timerDisplayPhone.style.fontFamily = 'monospace';
+        timerDisplayPhone.style.color = '#0f0';
+        timerDisplayPhone.id = 'phoneTimer';
+        timerDisplayPhone.innerText = '01:00';
+        
         const questionDisplay = document.createElement('div');
         questionDisplay.style.background = '#00000040';
         questionDisplay.style.borderRadius = '24px';
@@ -602,6 +743,7 @@
         statusMsg.style.color = '#ddd';
         
         container.appendChild(title);
+        container.appendChild(timerDisplayPhone);
         container.appendChild(questionDisplay);
         container.appendChild(answersContainer);
         container.appendChild(statusMsg);
@@ -609,6 +751,19 @@
         
         let currentQuestionId = null;
         let hasAnswered = false;
+        let phoneTimerInterval = null;
+        
+        function updatePhoneTimer(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            timerDisplayPhone.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            if (seconds <= 0) {
+                timerDisplayPhone.style.color = '#ff6666';
+                if (phoneTimerInterval) clearInterval(phoneTimerInterval);
+            } else {
+                timerDisplayPhone.style.color = '#0f0';
+            }
+        }
         
         function renderAnswers(answers) {
             answersContainer.innerHTML = '';
@@ -640,6 +795,21 @@
                 hasAnswered = false;
                 statusMsg.innerText = '🟢 Готов к ответу';
                 statusMsg.style.color = '#88ff88';
+                if (phoneTimerInterval) clearInterval(phoneTimerInterval);
+                let seconds = 60;
+                updatePhoneTimer(seconds);
+                phoneTimerInterval = setInterval(() => {
+                    if (seconds > 0) {
+                        seconds--;
+                        updatePhoneTimer(seconds);
+                        if (seconds === 0) {
+                            clearInterval(phoneTimerInterval);
+                            statusMsg.innerText = '⏰ Время вышло!';
+                            statusMsg.style.color = '#ff8888';
+                            document.querySelectorAll('#phoneAnswers button').forEach(btn => btn.disabled = true);
+                        }
+                    }
+                }, 1000);
             }
         });
         
@@ -664,8 +834,8 @@
                 return;
             }
             const state = (await answersRef.once('value')).val();
-            if (state && state.locked) {
-                statusMsg.innerText = '❌ Кто-то уже ответил!';
+            if (state && (state.locked || state.expired)) {
+                statusMsg.innerText = state.expired ? '⏰ Время вышло!' : '❌ Кто-то уже ответил!';
                 statusMsg.style.color = '#ff8888';
                 return;
             }
@@ -681,6 +851,20 @@
                 currentQuestionId = data.questionId;
                 questionDisplay.innerText = data.question;
                 renderAnswers(data.answers);
+                if (phoneTimerInterval) clearInterval(phoneTimerInterval);
+                let seconds = 60;
+                updatePhoneTimer(seconds);
+                phoneTimerInterval = setInterval(() => {
+                    if (seconds > 0) {
+                        seconds--;
+                        updatePhoneTimer(seconds);
+                        if (seconds === 0) {
+                            clearInterval(phoneTimerInterval);
+                            statusMsg.innerText = '⏰ Время вышло!';
+                            statusMsg.style.color = '#ff8888';
+                        }
+                    }
+                }, 1000);
             }
         });
     }
@@ -693,6 +877,7 @@
     });
     generateQRs();
     displayQuizList();
+    resetTimer();
 </script>
 </body>
 </html>
