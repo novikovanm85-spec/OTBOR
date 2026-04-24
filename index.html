@@ -400,8 +400,7 @@
         document.getElementById('questionText').innerHTML = currentQuestion.text;
         const btns = document.querySelectorAll('#answersPanel .answer-btn');
         const letters = ['A', 'B', 'C', 'D'];
-        const emoji = { A: '🅰️', B: '🅱️', C: '🅲️', D: '🅳️' };
-        btns.forEach((btn, idx) => {
+                btns.forEach((btn, idx) => {
             const letter = letters[idx];
             btn.innerHTML = `${emoji[letter]} ${letter}. ${currentQuestion.answers[idx]}`;
             btn.classList.remove('correct', 'wrong');
