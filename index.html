@@ -123,7 +123,7 @@
     let allQuizzes = [], editingQuizId = null, editingQuestions = [], currentQuiz = null, currentQuestionIndex = 0, currentQuestion = null;
     let waitingForAnswer = true, currentLocked = false;
     let timerInterval = null, timeLeft = 60, timerExpired = false;
-    let answeredTeams = new Set(); // Команды, уже ответившие в текущем раунде
+    let answeredTeams = new Set();
     
     const firebaseConfig = { databaseURL: "https://knopka-e92fb-default-rtdb.firebaseio.com/" };
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
@@ -155,7 +155,7 @@
                 document.getElementById('statusDisplay').innerHTML = '⏰ Время вышло!';
                 document.getElementById('statusDisplay').style.background = '#b71c1c';
                 document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => { btn.disabled=true; btn.style.opacity='0.5'; });
-                answersRef.set({ locked: true, expired: true });
+                answersRef.set({ expired: true });
             }
         }, 1000);
     }
@@ -261,7 +261,7 @@
             btn.className = 'q-btn';
             if(idx === currentQuestionIndex) btn.classList.add('active');
             btn.textContent = `Вопрос ${idx + 1}`;
-            btn.onclick = () => loadQuestion(idx); // Без confirm
+            btn.onclick = () => loadQuestion(idx);
             container.appendChild(btn);
         });
     }
@@ -272,7 +272,7 @@
         currentQuestion = { ...currentQuiz.questions[index] };
         waitingForAnswer = true;
         currentLocked = false;
-        answeredTeams.clear(); // Сбрасываем список ответивших команд
+        answeredTeams.clear();
         
         document.getElementById('questionText').innerHTML = currentQuestion.text;
         const btns = document.querySelectorAll('#answersPanel .answer-btn');
@@ -297,7 +297,7 @@
             questionId: Date.now() + index
         });
         
-        answersRef.set({ locked: false, winner: null, answer: null, expired: false });
+        answersRef.set({ expired: false });
         resetRoundRef.set(true);
         
         document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
@@ -330,7 +330,7 @@
         teamsScoreRef.set(scores);
     }
     
-    // ========== ОБРАБОТКА ОТВЕТОВ (ВСЕ КОМАНДЫ МОГУТ ОТВЕЧАТЬ) ==========
+    // ========== ОБРАБОТКА ОТВЕТОВ (БЕЗ БЛОКИРОВКИ LOCKED) ==========
     answersRef.on('value', (snapshot) => {
         const data = snapshot.val();
         if(!data || !data.winner || !data.answer) return;
@@ -340,10 +340,7 @@
         const team = TEAMS.find(t=>t.id===data.winner);
         if(!team) return;
         
-        // Если команда уже отвечала в этом раунде — игнорируем
         if(answeredTeams.has(team.id)) return;
-        
-        // Помечаем команду как ответившую
         answeredTeams.add(team.id);
         
         const isCorrect = (data.answer === currentQuestion.correct);
@@ -370,8 +367,6 @@
             });
         }
         
-        // НЕ БЛОКИРУЕМ waitingForAnswer — другие команды могут отвечать
-        
         setTimeout(() => {
             if(waitingForAnswer) {
                 document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
@@ -397,7 +392,7 @@
         document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
         document.getElementById('statusDisplay').style.background = '#1a1f2e';
         document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => { btn.classList.remove('correct','wrong'); btn.disabled=false; btn.style.opacity='1'; });
-        answersRef.set({ locked: false, winner: null, answer: null, expired: false });
+        answersRef.set({ expired: false });
         resetRoundRef.set(true);
     };
     
@@ -437,7 +432,7 @@
         };
     });
     
-    // ========== ТЕЛЕФОННЫЙ РЕЖИМ ==========
+    // ========== ТЕЛЕФОННЫЙ РЕЖИМ (БЕЗ ПРОВЕРКИ LOCKED) ==========
     const teamParam = new URLSearchParams(window.location.search).get('team');
     if (teamParam && TEAMS.some(t => t.id === teamParam)) {
         const team = TEAMS.find(t => t.id === teamParam);
@@ -494,6 +489,7 @@
         
         let canAnswer = true;
         let lastQuestionTimestamp = 0;
+        let hasAnsweredThisRound = false;
         
         function renderButtons(answers) {
             answersContainer.innerHTML = '';
@@ -522,6 +518,7 @@
                 questionDisplay.innerText = data.question;
                 renderButtons(data.answers);
                 canAnswer = true;
+                hasAnsweredThisRound = false;
                 statusMsg.innerText = '🟢 Готов к ответу';
                 statusMsg.style.color = '#88ff88';
             }
@@ -530,6 +527,7 @@
         resetRoundRef.on('value', (snap) => {
             if(snap.val() === true) {
                 canAnswer = true;
+                hasAnsweredThisRound = false;
                 statusMsg.innerText = '🟢 Новый вопрос!';
                 statusMsg.style.color = '#88ff88';
                 const btns = answersContainer.querySelectorAll('button');
@@ -539,48 +537,34 @@
         
         answersRef.on('value', (snap) => {
             const data = snap.val();
-            if (data && data.locked && data.winner === team.id) {
-                statusMsg.innerText = '✅ Ответ принят!';
-                statusMsg.style.color = '#88ff88';
-                const btns = answersContainer.querySelectorAll('button');
-                btns.forEach(btn => { btn.disabled = true; });
-            } else if (data && data.locked && data.winner && data.winner !== team.id) {
-                statusMsg.innerText = '❌ Соперник ответил быстрее';
-                statusMsg.style.color = '#ff8888';
-                const btns = answersContainer.querySelectorAll('button');
-                btns.forEach(btn => { btn.disabled = true; });
-            } else if (data && data.expired) {
+            if (data && data.expired) {
                 statusMsg.innerText = '⏰ Время вышло!';
                 statusMsg.style.color = '#ff8888';
                 const btns = answersContainer.querySelectorAll('button');
                 btns.forEach(btn => { btn.disabled = true; });
-            } else if (data && !data.locked && !data.winner && !data.expired) {
-                canAnswer = true;
-                const btns = answersContainer.querySelectorAll('button');
-                btns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
             }
         });
         
         async function sendAnswer(answer) {
-            if (!canAnswer) {
+            if (!canAnswer || hasAnsweredThisRound) {
                 statusMsg.innerText = '⏳ Вы уже ответили!';
                 statusMsg.style.color = '#ffaa66';
                 return;
             }
             const snapshot = await answersRef.once('value');
             const current = snapshot.val();
-            if (current && (current.locked || current.expired)) {
-                if(current.expired) statusMsg.innerText = '⏰ Время вышло!';
-                else statusMsg.innerText = '❌ Кто-то уже ответил!';
+            if (current && current.expired) {
+                statusMsg.innerText = '⏰ Время вышло!';
                 statusMsg.style.color = '#ff8888';
                 return;
             }
+            hasAnsweredThisRound = true;
             canAnswer = false;
             const btns = answersContainer.querySelectorAll('button');
             btns.forEach(btn => { btn.disabled = true; });
             statusMsg.innerText = '✅ Ответ отправлен!';
             statusMsg.style.color = '#88ff88';
-            answersRef.set({ winner: team.id, answer: answer, timestamp: Date.now(), locked: true });
+            answersRef.set({ winner: team.id, answer: answer, timestamp: Date.now() });
         }
         
         gameStateRef.once('value').then(snap => {
