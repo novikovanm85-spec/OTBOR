@@ -123,7 +123,7 @@
     let allQuizzes = [], editingQuizId = null, editingQuestions = [], currentQuiz = null, currentQuestionIndex = 0, currentQuestion = null;
     let waitingForAnswer = true, currentLocked = false;
     let timerInterval = null, timeLeft = 60, timerExpired = false;
-    let answeredTeams = new Set(); // Множество команд, уже ответивших в текущем раунде
+    let answeredTeams = new Set(); // Команды, уже ответившие в текущем раунде
     
     const firebaseConfig = { databaseURL: "https://knopka-e92fb-default-rtdb.firebaseio.com/" };
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
@@ -257,9 +257,11 @@
         container.innerHTML = '';
         if(!currentQuiz) return;
         currentQuiz.questions.forEach((_, idx) => {
-            const btn = document.createElement('button'); btn.className='q-btn'; if(idx===currentQuestionIndex) btn.classList.add('active');
-            btn.textContent = `Вопрос ${idx+1}`;
-            btn.onclick = () => { if(confirm('Перейти к этому вопросу?')) loadQuestion(idx); };
+            const btn = document.createElement('button');
+            btn.className = 'q-btn';
+            if(idx === currentQuestionIndex) btn.classList.add('active');
+            btn.textContent = `Вопрос ${idx + 1}`;
+            btn.onclick = () => loadQuestion(idx); // Без confirm
             container.appendChild(btn);
         });
     }
@@ -270,7 +272,7 @@
         currentQuestion = { ...currentQuiz.questions[index] };
         waitingForAnswer = true;
         currentLocked = false;
-        answeredTeams.clear(); // Очищаем список ответивших команд для нового раунда
+        answeredTeams.clear(); // Сбрасываем список ответивших команд
         
         document.getElementById('questionText').innerHTML = currentQuestion.text;
         const btns = document.querySelectorAll('#answersPanel .answer-btn');
@@ -354,7 +356,6 @@
             document.getElementById('statusDisplay').innerHTML = `🏆 ${team.name} ответил ПРАВИЛЬНО! +1 очко`;
             document.getElementById('statusDisplay').style.background = '#2e7d32';
             
-            // Подсвечиваем правильный ответ на экране ведущего
             document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => { 
                 if(btn.dataset.answer === currentQuestion.correct) btn.classList.add('correct'); 
             });
@@ -369,7 +370,8 @@
             });
         }
         
-        // Через 3 секунды очищаем статус, но не блокируем другие ответы
+        // НЕ БЛОКИРУЕМ waitingForAnswer — другие команды могут отвечать
+        
         setTimeout(() => {
             if(waitingForAnswer) {
                 document.getElementById('statusDisplay').innerHTML = '🟢 Готов к приёму ответов';
