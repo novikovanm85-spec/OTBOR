@@ -330,7 +330,7 @@
         teamsScoreRef.set(scores);
     }
     
-    // ========== ОБРАБОТКА ОТВЕТОВ (БЕЗ БЛОКИРОВКИ LOCKED) ==========
+    // ========== ОБРАБОТКА ОТВЕТОВ (БЕЗ СООБЩЕНИЯ О НЕПРАВИЛЬНОМ ОТВЕТЕ) ==========
     answersRef.on('value', (snapshot) => {
         const data = snapshot.val();
         if(!data || !data.winner || !data.answer) return;
@@ -357,10 +357,7 @@
                 if(btn.dataset.answer === currentQuestion.correct) btn.classList.add('correct'); 
             });
         } else {
-            const correctAnswerText = currentQuestion.answers[['A','B','C','D'].indexOf(currentQuestion.correct)];
-            document.getElementById('statusDisplay').innerHTML = `❌ ${team.name} ответил НЕПРАВИЛЬНО! Правильный ответ: ${currentQuestion.correct}. ${correctAnswerText}`;
-            document.getElementById('statusDisplay').style.background = '#b71c1c';
-            
+            // Только подсвечиваем ответы, сообщение НЕ ВЫВОДИМ
             document.querySelectorAll('#answersPanel .answer-btn').forEach(btn => {
                 if(btn.dataset.answer === currentQuestion.correct) btn.classList.add('correct');
                 if(btn.dataset.answer === data.answer && data.answer !== currentQuestion.correct) btn.classList.add('wrong');
@@ -432,7 +429,7 @@
         };
     });
     
-    // ========== ТЕЛЕФОННЫЙ РЕЖИМ (БЕЗ ПРОВЕРКИ LOCKED) ==========
+    // ========== ТЕЛЕФОННЫЙ РЕЖИМ ==========
     const teamParam = new URLSearchParams(window.location.search).get('team');
     if (teamParam && TEAMS.some(t => t.id === teamParam)) {
         const team = TEAMS.find(t => t.id === teamParam);
